@@ -32,11 +32,11 @@ class CrudBuilder<
     private accumulatedCrudMethods: AccumulatedCrudMethods,
   ) {}
 
-  static of<Type>(baseApiUrl: string) {
+  public static of<Type>(baseApiUrl: string) {
     return new CrudBuilder<Type>(baseApiUrl, {});
   }
 
-  get headers(): HttpHeaders {
+  private get headers(): HttpHeaders {
     const headersConfig = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -45,14 +45,14 @@ class CrudBuilder<
     return new HttpHeaders(headersConfig);
   }
 
-  get httpOptions() {
+  private get httpOptions() {
     return {
       headers: this.headers,
       withCredentials: true,
     };
   }
 
-  get() {
+  public get() {
     this.accumulatedCrudMethods = {
       ...this.accumulatedCrudMethods,
       _get: this._get,
@@ -63,7 +63,7 @@ class CrudBuilder<
     >;
   }
 
-  getAll() {
+  public getAll() {
     this.accumulatedCrudMethods = {
       ...this.accumulatedCrudMethods,
       _getAll: this._getAll,
@@ -74,7 +74,7 @@ class CrudBuilder<
     >;
   }
 
-  create<CreateType = never>() {
+  public create<CreateType = never>() {
     this.accumulatedCrudMethods = {
       ...this.accumulatedCrudMethods,
       _create: this._create<CreateType>,
@@ -85,7 +85,7 @@ class CrudBuilder<
     >;
   }
 
-  update<UpdateType = never>() {
+  public update<UpdateType = never>() {
     this.accumulatedCrudMethods = {
       ...this.accumulatedCrudMethods,
       _update: this._update<UpdateType>,
@@ -96,7 +96,7 @@ class CrudBuilder<
     >;
   }
 
-  delete() {
+  public delete() {
     this.accumulatedCrudMethods = {
       ...this.accumulatedCrudMethods,
       _delete: this._delete,
@@ -107,11 +107,11 @@ class CrudBuilder<
     >;
   }
 
-  build() {
+  public build() {
     return signalStoreFeature(withMethods(() => ({ ...this.accumulatedCrudMethods })));
   }
 }
 
-export function withCrudMethods<Type = never>(baseApiUrl: string) {
+export function withCrudMethods<Type = never>(baseApiUrl: string): CrudBuilder<Type, {}> {
   return CrudBuilder.of<Type>(baseApiUrl);
 }
