@@ -31,13 +31,13 @@ class CrudBuilder<
 
   private constructor(
     private readonly baseApiUrl: TrailingSlashUrl,
-    private readonly httpOptions: HttpOptions,
+    private readonly httpOptions: Partial<HttpOptions>,
     private accumulatedCrudMethods: AccumulatedCrudMethods,
   ) {}
 
   public static of<Type>(
     baseApiUrl: TrailingSlashUrl,
-    httpOptions?: HttpOptions,
+    httpOptions?: Partial<HttpOptions>,
   ): CrudBuilder<Type, {}> {
     return new CrudBuilder<Type>(
       baseApiUrl,
@@ -125,6 +125,9 @@ class CrudBuilder<
   }
 }
 
-export function withCrudMethods<Type = never>(baseApiUrl: TrailingSlashUrl): CrudBuilder<Type, {}> {
-  return CrudBuilder.of<Type>(baseApiUrl);
+export function withCrudMethods<Type = never>(
+  baseApiUrl: TrailingSlashUrl,
+  httpOptions?: Partial<HttpOptions>,
+): CrudBuilder<Type, {}> {
+  return CrudBuilder.of<Type>(baseApiUrl, httpOptions);
 }
