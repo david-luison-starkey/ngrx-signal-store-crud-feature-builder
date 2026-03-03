@@ -1,10 +1,9 @@
 import { Component, inject, signal } from "@angular/core";
 import { RouterOutlet } from "@angular/router";
-import { patchState, signalStore, withFeature, withMethods, withState } from "@ngrx/signals";
+import { patchState, signalStore, withMethods, withState } from "@ngrx/signals";
 import { withCrudMethods } from "./with-crud-methods/feature";
 import { rxMethod } from "@ngrx/signals/rxjs-interop";
 import { pipe, switchMap, tap } from "rxjs";
-import { HttpClient } from "@angular/common/http";
 
 interface User {
   id: string;
