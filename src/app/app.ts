@@ -54,8 +54,4 @@ const Store = signalStore(
 export class App {
   protected readonly title = signal("ngrx-signal-store-crud-feature-builder");
   store = inject(Store);
-
-  constructor() {
-    this.store.getUser("1913D");
-  }
 }
