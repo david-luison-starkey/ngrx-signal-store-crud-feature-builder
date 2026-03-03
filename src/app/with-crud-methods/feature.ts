@@ -1,8 +1,8 @@
-import { inject } from "@angular/core";
-import { PrivateSignalStoreCrudMethods } from "./models";
+import { HttpOptions, PrivateSignalStoreCrudMethods, TrailingSlashUrl } from "./models";
 import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { first, Observable } from "rxjs";
 import { signalStoreFeature, withMethods } from "@ngrx/signals";
+import { inject } from "@angular/core";
 
 class CrudBuilder<
   Type,
@@ -10,46 +10,47 @@ class CrudBuilder<
     Record<PrivateSignalStoreCrudMethods, (...args: unknown[]) => unknown>
   > = {},
 > {
-  private readonly httpClient = inject(HttpClient);
+  private readonly _get = (httpClient: HttpClient) => (id: string) =>
+    httpClient.get<Type[]>(`${this.baseApiUrl}${id}`, this.httpOptions).pipe(first());
 
-  private readonly _get = (id: string) =>
-    this.httpClient.get<Type[]>(`${this.baseApiUrl}/${id}`, this.httpOptions).pipe(first());
+  private readonly _getAll = (httpClient: HttpClient) => () =>
+    httpClient.get<Type>(`${this.baseApiUrl}`, this.httpOptions).pipe(first());
 
-  private readonly _getAll = () =>
-    this.httpClient.get<Type>(`${this.baseApiUrl}`, this.httpOptions).pipe(first());
+  private readonly _create =
+    <CreateType>(httpClient: HttpClient) =>
+    (id: string, data: CreateType) =>
+      httpClient.post<Type>(`${this.baseApiUrl}${id}`, data, this.httpOptions).pipe(first());
 
-  private readonly _create = <CreateType>(id: string, data: CreateType) =>
-    this.httpClient.post<Type>(`${this.baseApiUrl}/${id}`, data, this.httpOptions).pipe(first());
+  private readonly _update =
+    <UpdateType>(httpClient: HttpClient) =>
+    (id: string, data: UpdateType) =>
+      httpClient.put<Type>(`${this.baseApiUrl}${id}`, data, this.httpOptions).pipe(first());
 
-  private readonly _update = <UpdateType>(id: string, data: UpdateType) =>
-    this.httpClient.put<Type>(`${this.baseApiUrl}/${id}`, data, this.httpOptions).pipe(first());
-
-  private readonly _delete = (id: string) =>
-    this.httpClient.delete<void>(`${this.baseApiUrl}/${id}`, this.httpOptions).pipe(first());
+  private readonly _delete = (httpClient: HttpClient) => (id: string) =>
+    httpClient.delete<void>(`${this.baseApiUrl}${id}`, this.httpOptions).pipe(first());
 
   private constructor(
-    private readonly baseApiUrl: string,
+    private readonly baseApiUrl: TrailingSlashUrl,
+    private readonly httpOptions: HttpOptions,
     private accumulatedCrudMethods: AccumulatedCrudMethods,
   ) {}
 
-  public static of<Type>(baseApiUrl: string) {
-    return new CrudBuilder<Type>(baseApiUrl, {});
-  }
-
-  private get headers(): HttpHeaders {
-    const headersConfig = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    };
-
-    return new HttpHeaders(headersConfig);
-  }
-
-  private get httpOptions() {
-    return {
-      headers: this.headers,
-      withCredentials: true,
-    };
+  public static of<Type>(
+    baseApiUrl: TrailingSlashUrl,
+    httpOptions?: HttpOptions,
+  ): CrudBuilder<Type, {}> {
+    return new CrudBuilder<Type>(
+      baseApiUrl,
+      {
+        headers: new HttpHeaders({
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        withCredentials: true,
+        ...httpOptions,
+      },
+      {},
+    );
   }
 
   public get() {
@@ -108,10 +109,22 @@ class CrudBuilder<
   }
 
   public build() {
-    return signalStoreFeature(withMethods(() => ({ ...this.accumulatedCrudMethods })));
+    return signalStoreFeature(
+      withMethods((_, httpClient = inject(HttpClient)) => {
+        return {
+          ...Object.entries(this.accumulatedCrudMethods).reduce((acc, [key, value]) => {
+            acc = {
+              ...acc,
+              [key]: value(httpClient),
+            };
+            return acc;
+          }, {} as AccumulatedCrudMethods),
+        };
+      }),
+    );
   }
 }
 
-export function withCrudMethods<Type = never>(baseApiUrl: string): CrudBuilder<Type, {}> {
+export function withCrudMethods<Type = never>(baseApiUrl: TrailingSlashUrl): CrudBuilder<Type, {}> {
   return CrudBuilder.of<Type>(baseApiUrl);
 }
