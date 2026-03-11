@@ -1,59 +1,51 @@
 # NgrxSignalStoreCrudFeatureBuilder
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.1.1.
+Inspired by [Ngrx SignalStoreFeature Conditional](https://github.com/michael-small/ngrx-signal-store-feature-conditional) ([and the live walkthrough](https://www.youtube.com/watch?v=1D8VTlTnJ2E). This project contains an NgRx Signal Store feature, `withCrudMethods`, that affords an incremental, declarative, and type-safe way (I think) to expose common http methods to a signal store, using the builder pattern.
 
-## Development server
+# Local setup 
 
-To start a local development server, run:
+This is a basic Angular project, so any runtime experimentation will require adding more code.
 
-```bash
-ng serve
+That said, `src/app/app.ts` contains some basic usage to get a sense of the look and feel of `withCrudMethods`:
+
+```ts
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+}
+
+const Store = signalStore(
+  withState({}),
+  withCrudMethods<User>(() => "/api/v1/users/")
+    .get()
+    .getAll()
+    .pagedSearch()
+    .create<Omit<User, "id">>()
+    .update<Partial<User>>()
+    .delete()
+    .build(),
+  withMethods((store) => ({
+    createUser: rxMethod<Omit<User, "id">>(pipe(switchMap((user) => store._create(user)))),
+    getUser: rxMethod<string>(
+      pipe(
+        switchMap((id) => store._get(id)),
+        tap((user) => {
+          patchState(store, { ...user });
+        }),
+      ),
+    ),
+  })),
+);
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+# Tests
 
-## Code scaffolding
+The feature does have some simple unit tests.
 
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+Execute with `vitest` via:
 
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
-
-```bash
+```shell
 ng test
 ```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.

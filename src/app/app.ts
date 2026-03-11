@@ -17,6 +17,7 @@ const Store = signalStore(
   withCrudMethods<User>(() => "/api/v1/users/")
     .get()
     .getAll()
+    .pagedSearch()
     .create<Omit<User, "id">>()
     .update<Partial<User>>()
     .delete()
