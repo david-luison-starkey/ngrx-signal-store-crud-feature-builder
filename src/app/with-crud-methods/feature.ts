@@ -1,133 +1,42 @@
-import { HttpOptions, PrivateSignalStoreCrudMethods, TrailingSlashUrl } from "./models";
-import { HttpClient, HttpHeaders } from "@angular/common/http";
-import { first, Observable } from "rxjs";
-import { signalStoreFeature, withMethods } from "@ngrx/signals";
-import { inject } from "@angular/core";
+import { CrudBuilder } from "./builder";
+import { type HttpOptions } from "./models";
 
-class CrudBuilder<
-  Type,
-  AccumulatedCrudMethods extends Partial<
-    Record<PrivateSignalStoreCrudMethods, (...args: unknown[]) => unknown>
-  > = {},
-> {
-  private readonly _get = (httpClient: HttpClient) => (id: string) =>
-    httpClient.get<Type[]>(`${this.baseApiUrl}${id}`, this.httpOptions).pipe(first());
-
-  private readonly _getAll = (httpClient: HttpClient) => () =>
-    httpClient.get<Type>(`${this.baseApiUrl}`, this.httpOptions).pipe(first());
-
-  private readonly _create =
-    <CreateType>(httpClient: HttpClient) =>
-    (id: string, data: CreateType) =>
-      httpClient.post<Type>(`${this.baseApiUrl}${id}`, data, this.httpOptions).pipe(first());
-
-  private readonly _update =
-    <UpdateType>(httpClient: HttpClient) =>
-    (id: string, data: UpdateType) =>
-      httpClient.put<Type>(`${this.baseApiUrl}${id}`, data, this.httpOptions).pipe(first());
-
-  private readonly _delete = (httpClient: HttpClient) => (id: string) =>
-    httpClient.delete<void>(`${this.baseApiUrl}${id}`, this.httpOptions).pipe(first());
-
-  private constructor(
-    private readonly baseApiUrl: TrailingSlashUrl,
-    private readonly httpOptions: Partial<HttpOptions>,
-    private accumulatedCrudMethods: AccumulatedCrudMethods,
-  ) {}
-
-  public static of<Type>(
-    baseApiUrl: TrailingSlashUrl,
-    httpOptions?: Partial<HttpOptions>,
-  ): CrudBuilder<Type, {}> {
-    return new CrudBuilder<Type>(
-      baseApiUrl,
-      {
-        headers: new HttpHeaders({
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        }),
-        withCredentials: true,
-        ...httpOptions,
-      },
-      {},
-    );
-  }
-
-  public get() {
-    this.accumulatedCrudMethods = {
-      ...this.accumulatedCrudMethods,
-      _get: this._get,
-    };
-    return this as CrudBuilder<
-      Type,
-      AccumulatedCrudMethods & Record<"_get", (id: string) => Observable<Type>>
-    >;
-  }
-
-  public getAll() {
-    this.accumulatedCrudMethods = {
-      ...this.accumulatedCrudMethods,
-      _getAll: this._getAll,
-    };
-    return this as CrudBuilder<
-      Type,
-      AccumulatedCrudMethods & Record<"_getAll", () => Observable<Type[]>>
-    >;
-  }
-
-  public create<CreateType = never>() {
-    this.accumulatedCrudMethods = {
-      ...this.accumulatedCrudMethods,
-      _create: this._create<CreateType>,
-    };
-    return this as CrudBuilder<
-      Type,
-      AccumulatedCrudMethods & Record<"_create", (id: string, data: CreateType) => Observable<Type>>
-    >;
-  }
-
-  public update<UpdateType = never>() {
-    this.accumulatedCrudMethods = {
-      ...this.accumulatedCrudMethods,
-      _update: this._update<UpdateType>,
-    };
-    return this as CrudBuilder<
-      Type,
-      AccumulatedCrudMethods & Record<"_update", (id: string, data: UpdateType) => Observable<Type>>
-    >;
-  }
-
-  public delete() {
-    this.accumulatedCrudMethods = {
-      ...this.accumulatedCrudMethods,
-      _delete: this._delete,
-    };
-    return this as CrudBuilder<
-      Type,
-      AccumulatedCrudMethods & Record<"_delete", (id: string) => Observable<void>>
-    >;
-  }
-
-  public build() {
-    return signalStoreFeature(
-      withMethods((_, httpClient = inject(HttpClient)) => {
-        return {
-          ...Object.entries(this.accumulatedCrudMethods).reduce((acc, [key, value]) => {
-            acc = {
-              ...acc,
-              [key]: value(httpClient),
-            };
-            return acc;
-          }, {} as AccumulatedCrudMethods),
-        };
-      }),
-    );
-  }
-}
-
+/**
+ * Provides Signal Store private methods - methods prefixed with an
+ * underscore - for common http operations.
+ *
+ * Only methods built using the builder with be exposed to a consuming store.
+ *
+ * URLs will be constructed for each method.
+ *
+ * The base API URL is provided via a callback to allow execution within an
+ * injection context.
+ *
+ * @param apiUrlFactory - Function returning the base url to be used for all
+ * http requests. Additional operation specific path segments (like id) will
+ * be concatenated with `apiUrl`. Leading and trailing forward slashes are
+ * stripped.
+ * @param httpOptions - Angular `HttpClient` options used to configure
+ * all methods and their respective http requests.
+ * @example
+ * ```ts
+ * const Store = signalStore(
+ *  withState({}),
+ *  withCrudMethods<Course>(() => `${inject(API_BASE_URL)}/courses`)
+ *    .get() // _get(id)
+ *    .getAll() // _getAll()
+ *    .pagedSearch() // _pagedSearch(searchQuery: QueryString)
+ *    .create<CreateCourse>(), // _create(newCourse: CreateCourse)
+ *    .update<UpdateCourse>(), // _update(id: string, updatedCourse: UpdateCourse)
+ *    .delete() // _delete(id)
+ *    .build() // create signalStoreFeature()
+ * );
+ * ```
+ *
+ */
 export function withCrudMethods<Type = never>(
-  baseApiUrl: TrailingSlashUrl,
+  apiUrlFactory: () => string,
   httpOptions?: Partial<HttpOptions>,
-): CrudBuilder<Type, {}> {
-  return CrudBuilder.of<Type>(baseApiUrl, httpOptions);
+): CrudBuilder<Type> {
+  return CrudBuilder.of<Type>(apiUrlFactory, httpOptions);
 }

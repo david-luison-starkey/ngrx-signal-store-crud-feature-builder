@@ -1,10 +1,22 @@
-import { HttpContext, HttpHeaders, HttpParams } from "@angular/common/http";
+import { type HttpContext, type HttpHeaders, type HttpParams } from "@angular/common/http";
 
-export type CrudMethods = "create" | "update" | "get" | "getAll" | "delete";
+/**
+ * Base crud method namespaces supported by {@link withCrudMethods}.
+ */
+export type CrudMethods = "get" | "getAll" | "pagedSearch" | "create" | "update" | "delete";
 
+/**
+ * NgRx Signal Store treats methods with an underscore prefix as private.
+ *
+ * This type performs said transformation for methods built by
+ * {@link withCrudMethods} as they are intended for store consumption only.
+ */
 export type PrivateSignalStoreCrudMethods = `_${CrudMethods}`;
 
-export type TrailingSlashUrl = `${string}/`;
+/**
+ * Type to enforce the shape of search query strings provided to `_pagedSearch`.
+ */
+export type QueryString = `?${string}`;
 
 /**
  * Type vendored from `@angular/common/http` crud methods `options` parameter.
@@ -15,7 +27,7 @@ export type HttpOptions = {
   observe?: "body";
   params?:
     | HttpParams
-    | Record<string, string | number | boolean | ReadonlyArray<string | number | boolean>>;
+    | Record<string, string | number | boolean | readonly (string | number | boolean)[]>;
   reportProgress?: boolean;
   responseType?: "json";
   withCredentials?: boolean;
@@ -35,3 +47,15 @@ export type HttpOptions = {
     | boolean;
   timeout?: number;
 };
+
+/**
+ * Response from paginated search queries.
+ */
+export interface PagedResponse<Type> {
+  totalResults: number;
+  totalPages: number;
+  pageNumber: number;
+  entriesPerPage: number;
+  offset: number;
+  results: Type[];
+}

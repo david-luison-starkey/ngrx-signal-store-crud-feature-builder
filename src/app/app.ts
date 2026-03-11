@@ -14,7 +14,7 @@ interface User {
 
 const Store = signalStore(
   withState({}),
-  withCrudMethods<User>("/api/v1/users/")
+  withCrudMethods<User>(() => "/api/v1/users/")
     .get()
     .getAll()
     .create<Omit<User, "id">>()
@@ -22,17 +22,7 @@ const Store = signalStore(
     .delete()
     .build(),
   withMethods((store) => ({
-    createUser: rxMethod<User>(
-      pipe(
-        switchMap((user) =>
-          store._create("3a3d5bbb-36ba-4cc0-a6f0-16389309e020", {
-            firstName: "John",
-            lastName: "Smith",
-            age: 34,
-          }),
-        ),
-      ),
-    ),
+    createUser: rxMethod<Omit<User, "id">>(pipe(switchMap((user) => store._create(user)))),
     getUser: rxMethod<string>(
       pipe(
         switchMap((id) => store._get(id)),
