@@ -1,6 +1,6 @@
 # NgrxSignalStoreCrudFeatureBuilder
 
-Inspired by [Ngrx SignalStoreFeature Conditional](https://github.com/michael-small/ngrx-signal-store-feature-conditional) ([and the live walkthrough](https://www.youtube.com/watch?v=1D8VTlTnJ2E). This project contains an NgRx Signal Store feature, `withCrudMethods`, that affords an incremental, declarative, and type-safe way (I think) to expose common http methods to a signal store, using the builder pattern.
+Inspired by [Ngrx SignalStoreFeature Conditional](https://github.com/michael-small/ngrx-signal-store-feature-conditional) ([and the live walkthrough](https://www.youtube.com/watch?v=1D8VTlTnJ2E)). This project contains an NgRx Signal Store feature, `withCrudMethods`, that affords an incremental, declarative, and type-safe way (I think) to expose common http methods to a signal store, using the builder pattern.
 
 # Local setup 
 
