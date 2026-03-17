@@ -40,7 +40,6 @@ type CrudMethodReturn<
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends string[],
   Collection extends string,
-  UseNamedMethods extends boolean,
   NamedMethodsName extends string,
 > = Omit<
   Builder<
@@ -50,7 +49,6 @@ type CrudMethodReturn<
     },
     [...Built, MethodName],
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   >,
   Built[number] | MethodName
@@ -61,7 +59,6 @@ type EntitiesReturn<
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends string[],
   Collection extends string,
-  UseNamedMethods extends boolean,
   NamedMethodsName extends string,
 > = Omit<
   Builder<
@@ -72,7 +69,6 @@ type EntitiesReturn<
     },
     [...Built, "entities", "namedEntities"],
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   >,
   Built[number] | "entities" | "namedEntities"
@@ -83,7 +79,6 @@ type NamedEntitiesReturn<
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends string[],
   Collection extends string,
-  UseNamedMethods extends boolean,
   NamedMethodsName extends string,
 > = Omit<
   Builder<
@@ -94,7 +89,6 @@ type NamedEntitiesReturn<
     },
     [...Built, "namedEntities" | "entities"],
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   >,
   Built[number] | "namedEntities" | "entities"
@@ -139,7 +133,6 @@ class Builder<
   },
   Built extends string[] = [],
   Collection extends string = "",
-  UseNamedMethods extends boolean = false,
   NamedMethodsName extends string = "",
 > {
   constructor(
@@ -173,7 +166,6 @@ class Builder<
     AccumulatedFeature,
     Built,
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
@@ -188,7 +180,6 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      UseNamedMethods,
       NamedMethodsName
     >;
   }
@@ -200,7 +191,6 @@ class Builder<
     AccumulatedFeature,
     Built,
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
@@ -215,7 +205,6 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      UseNamedMethods,
       NamedMethodsName
     >;
   }
@@ -227,7 +216,6 @@ class Builder<
     AccumulatedFeature,
     Built,
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
@@ -242,7 +230,6 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      UseNamedMethods,
       NamedMethodsName
     >;
   }
@@ -254,7 +241,6 @@ class Builder<
     AccumulatedFeature,
     Built,
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
@@ -269,7 +255,6 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      UseNamedMethods,
       NamedMethodsName
     >;
   }
@@ -281,7 +266,6 @@ class Builder<
     AccumulatedFeature,
     Built,
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
@@ -296,7 +280,6 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      UseNamedMethods,
       NamedMethodsName
     >;
   }
@@ -308,7 +291,6 @@ class Builder<
     AccumulatedFeature,
     Built,
     Collection,
-    UseNamedMethods,
     NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
@@ -323,30 +305,15 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      UseNamedMethods,
       NamedMethodsName
     >;
   }
 
   private useEntities = false;
 
-  entities(): EntitiesReturn<
-    Type,
-    AccumulatedFeature,
-    Built,
-    Collection,
-    UseNamedMethods,
-    NamedMethodsName
-  > {
+  entities(): EntitiesReturn<Type, AccumulatedFeature, Built, Collection, NamedMethodsName> {
     this.useEntities = true;
-    return this as EntitiesReturn<
-      Type,
-      AccumulatedFeature,
-      Built,
-      Collection,
-      UseNamedMethods,
-      NamedMethodsName
-    >;
+    return this as EntitiesReturn<Type, AccumulatedFeature, Built, Collection, NamedMethodsName>;
   }
 
   private useNamedEntities = false;
@@ -355,27 +322,13 @@ class Builder<
   namedEntities<const CollectionName extends string>(
     collection: DeriveConsistentCollectionAndMethodName<CollectionName, NamedMethodsName>,
   ): Type extends Entity
-    ? NamedEntitiesReturn<
-        Type,
-        AccumulatedFeature,
-        Built,
-        CollectionName,
-        UseNamedMethods,
-        NamedMethodsName
-      >
+    ? NamedEntitiesReturn<Type, AccumulatedFeature, Built, CollectionName, NamedMethodsName>
     : never {
     this.useNamedEntities = true;
     this.collection = collection;
 
     return this as unknown as Type extends Entity
-      ? NamedEntitiesReturn<
-          Type,
-          AccumulatedFeature,
-          Built,
-          CollectionName,
-          UseNamedMethods,
-          NamedMethodsName
-        >
+      ? NamedEntitiesReturn<Type, AccumulatedFeature, Built, CollectionName, NamedMethodsName>
       : never;
   }
 
@@ -385,14 +338,14 @@ class Builder<
   namedMethods<const NamedMethod extends string>(
     name: DeriveConsistentCollectionAndMethodName<NamedMethod, Collection>,
   ): Omit<
-    Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, true, NamedMethod>,
+    Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, NamedMethod>,
     Built[number] | "namedMethods"
   > {
     this.useNamedMethods = true;
     this.methodName = name;
 
     return this as unknown as Omit<
-      Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, true, NamedMethod>,
+      Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, NamedMethod>,
       Built[number] | "namedMethods"
     >;
   }
@@ -420,18 +373,18 @@ class Builder<
               };
               return acc;
             },
-            {} as UseNamedMethods extends true
-              ? CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>
-              : AccumulatedFeature["methods"],
+            {} as NamedMethodsName extends ""
+              ? AccumulatedFeature["methods"]
+              : CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>,
           ),
         };
       }),
     ) as SignalStoreFeature<
       EmptyFeatureResult,
       Omit<AccumulatedFeature, "methods"> & {
-        methods: UseNamedMethods extends true
-          ? CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>
-          : AccumulatedFeature["methods"];
+        methods: NamedMethodsName extends ""
+          ? AccumulatedFeature["methods"]
+          : CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>;
       }
     >;
   }
@@ -445,13 +398,13 @@ export const ProtoProgressStore = signalStore(
   { providedIn: "root" },
   Builder.of<User>(() => "")
     .get()
-    .namedMethods("users")
+    .namedMethods("user")
+    .namedEntities("user")
     .getAll()
     .pagedSearch()
     .create()
     .update()
     .delete()
-    .namedEntities("users")
     .build(),
   withDevtools("Users"),
   withMethods((store) => ({

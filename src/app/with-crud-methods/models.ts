@@ -91,4 +91,6 @@ export type DevToolsActionPrefix<Name extends string> = `[${Capitalize<Name>}]`;
 export type DeriveConsistentCollectionAndMethodName<
   Name extends string,
   ExtantName extends string,
-> = ExtantName extends "" ? Name : ExtantName;
+> = NonEmptyString<ExtantName extends "" ? Name : ExtantName>;
+
+type NonEmptyString<Type extends string> = Type extends "" ? never : Type;
