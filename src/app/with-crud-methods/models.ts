@@ -1,4 +1,5 @@
 import { type HttpContext, type HttpHeaders, type HttpParams } from "@angular/common/http";
+import { EntityId } from "@ngrx/signals/entities";
 
 /**
  * Base crud method namespaces supported by {@link withCrudMethods}.
@@ -66,3 +67,28 @@ export interface PagedResponse<Type> {
   offset: number;
   results: Type[];
 }
+
+/**
+ * Compatible signature for NgRx Signal Store `withEntities` generic type.
+ */
+export type Entity = {
+  id: EntityId;
+};
+
+/**
+ * @typeParam Collection - Name of `withEntities` collection.
+ * @typeParam CrudMethods - Record of method names and function signatures.
+ */
+export type CollectionCrudMethods<
+  Collection extends string,
+  CrudMethods extends Record<string, unknown>,
+> = {
+  [Key in string & keyof CrudMethods as `${Key}${Capitalize<Collection>}`]: CrudMethods[Key];
+};
+
+export type DevToolsActionPrefix<Name extends string> = `[${Capitalize<Name>}]`;
+
+export type DeriveConsistentCollectionAndMethodName<
+  Name extends string,
+  ExtantName extends string,
+> = ExtantName extends "" ? Name : ExtantName;

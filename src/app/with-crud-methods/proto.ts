@@ -2,30 +2,34 @@ import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { inject } from "@angular/core";
 import {
   type EmptyFeatureResult,
+  patchState,
   signalStore,
   type SignalStoreFeature,
   signalStoreFeature,
   type SignalStoreFeatureResult,
   type,
-  withMethods
+  withMethods,
+  WritableStateSource
 } from "@ngrx/signals";
 import {
   addEntity,
-  EntityId,
   type EntityProps,
   type EntityState,
   NamedEntityProps,
   NamedEntityState,
   withEntities
 } from "@ngrx/signals/entities";
-import { first, type Observable, pipe, tap } from "rxjs";
-import { type HttpOptions } from "./models";
+import { type Observable, pipe, switchMap, tap } from "rxjs";
+import {
+  CollectionCrudMethods,
+  type DeriveConsistentCollectionAndMethodName,
+  type Entity,
+  type HttpOptions,
+  PagedResponse
+} from "./models";
 import { updateState, withDevtools } from "@angular-architects/ngrx-toolkit";
 import { rxMethod } from "@ngrx/signals/rxjs-interop";
-
-type Entity = {
-  id: EntityId;
-};
+import { _create, _delete, _get, _getAll, _pagedSearch, _update } from "./crud-functions";
 
 export type CrudMethods = "get" | "getAll" | "pagedSearch" | "create" | "update" | "delete";
 
@@ -36,7 +40,8 @@ type CrudMethodReturn<
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends string[],
   Collection extends string,
-  CollectionMethods extends boolean,
+  UseNamedMethods extends boolean,
+  NamedMethodsName extends string,
 > = Omit<
   Builder<
     Type,
@@ -45,7 +50,8 @@ type CrudMethodReturn<
     },
     [...Built, MethodName],
     Collection,
-    CollectionMethods
+    UseNamedMethods,
+    NamedMethodsName
   >,
   Built[number] | MethodName
 >;
@@ -55,7 +61,8 @@ type EntitiesReturn<
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends string[],
   Collection extends string,
-  CollectionMethods extends boolean,
+  UseNamedMethods extends boolean,
+  NamedMethodsName extends string,
 > = Omit<
   Builder<
     Type,
@@ -65,7 +72,8 @@ type EntitiesReturn<
     },
     [...Built, "entities", "namedEntities"],
     Collection,
-    CollectionMethods
+    UseNamedMethods,
+    NamedMethodsName
   >,
   Built[number] | "entities" | "namedEntities"
 >;
@@ -75,7 +83,8 @@ type NamedEntitiesReturn<
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends string[],
   Collection extends string,
-  CollectionMethods extends boolean,
+  UseNamedMethods extends boolean,
+  NamedMethodsName extends string,
 > = Omit<
   Builder<
     Type,
@@ -83,12 +92,43 @@ type NamedEntitiesReturn<
       state: NamedEntityState<Type, Collection>;
       props: NamedEntityProps<Type, Collection>;
     },
-    [...Exclude<Built, "collectionMethods">, "namedEntities" | "entities"],
+    [...Built, "namedEntities" | "entities"],
     Collection,
-    CollectionMethods
+    UseNamedMethods,
+    NamedMethodsName
   >,
-  Exclude<Built[number], "collectionMethods"> | "namedEntities" | "entities"
+  Built[number] | "namedEntities" | "entities"
 >;
+
+const _getAndUpdateState =
+  (
+    httpClient: HttpClient,
+    apiUrl: string,
+    httpOptions: HttpOptions,
+    store: WritableStateSource<any>,
+    withCollection: boolean,
+    collection: string = "",
+    withDevTools: boolean,
+    devToolsName: string = "",
+  ) =>
+  <Type extends Entity>() =>
+    rxMethod<string>(
+      pipe(
+        switchMap((id) => _get(httpClient, apiUrl, httpOptions)<Type>(id)),
+        tap((response) => {
+          withDevTools
+            ? updateState(
+                store,
+                devToolsName,
+                withCollection ? addEntity(response, { collection }) : addEntity(response),
+              )
+            : patchState(
+                store,
+                withCollection ? addEntity(response, { collection }) : addEntity(response),
+              );
+        }),
+      ),
+    );
 
 class Builder<
   Type,
@@ -97,18 +137,11 @@ class Builder<
     props: object;
     methods: {};
   },
-  Built extends string[] = ["collectionMethods"],
+  Built extends string[] = [],
   Collection extends string = "",
-  CollectionMethods extends boolean = false,
+  UseNamedMethods extends boolean = false,
+  NamedMethodsName extends string = "",
 > {
-  private readonly _get = (httpClient: HttpClient, apiUrl: string) => (id: string) =>
-    httpClient.get<Type>(`${apiUrl}/${id}`, this.httpOptions).pipe(first());
-
-  private readonly _create =
-    <CreateType>(httpClient: HttpClient, apiUrl: string) =>
-    (data: CreateType) =>
-      httpClient.post<Type>(apiUrl, data, this.httpOptions).pipe(first());
-
   constructor(
     private readonly apiUrlFactory: () => string,
     private readonly httpOptions: Partial<HttpOptions>,
@@ -140,11 +173,12 @@ class Builder<
     AccumulatedFeature,
     Built,
     Collection,
-    CollectionMethods
+    UseNamedMethods,
+    NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      _get: this._get,
+      _get,
     };
 
     return this as unknown as CrudMethodReturn<
@@ -154,22 +188,78 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      CollectionMethods
+      UseNamedMethods,
+      NamedMethodsName
     >;
   }
 
-  public create<CreateType = never>(): CrudMethodReturn<
+  public getAll(): CrudMethodReturn<
+    "getAll",
+    () => Observable<Type[]>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Collection,
+    UseNamedMethods,
+    NamedMethodsName
+  > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      _getAll,
+    };
+
+    return this as unknown as CrudMethodReturn<
+      "getAll",
+      () => Observable<Type[]>,
+      Type,
+      AccumulatedFeature,
+      Built,
+      Collection,
+      UseNamedMethods,
+      NamedMethodsName
+    >;
+  }
+
+  public pagedSearch(): CrudMethodReturn<
+    "pagedSearch",
+    () => Observable<PagedResponse<Type>>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Collection,
+    UseNamedMethods,
+    NamedMethodsName
+  > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      _pagedSearch,
+    };
+
+    return this as unknown as CrudMethodReturn<
+      "pagedSearch",
+      () => Observable<PagedResponse<Type>>,
+      Type,
+      AccumulatedFeature,
+      Built,
+      Collection,
+      UseNamedMethods,
+      NamedMethodsName
+    >;
+  }
+
+  public create<CreateType = Omit<Type, "id">>(): CrudMethodReturn<
     "create",
     (data: CreateType) => Observable<Type>,
     Type,
     AccumulatedFeature,
     Built,
     Collection,
-    CollectionMethods
+    UseNamedMethods,
+    NamedMethodsName
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      _create: this._create,
+      _create,
     };
 
     return this as unknown as CrudMethodReturn<
@@ -179,43 +269,131 @@ class Builder<
       AccumulatedFeature,
       Built,
       Collection,
-      CollectionMethods
+      UseNamedMethods,
+      NamedMethodsName
+    >;
+  }
+
+  public update<UpdateType = Partial<Type>>(): CrudMethodReturn<
+    "update",
+    (id: string, data: UpdateType) => Observable<Type>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Collection,
+    UseNamedMethods,
+    NamedMethodsName
+  > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      _update,
+    };
+
+    return this as unknown as CrudMethodReturn<
+      "update",
+      (id: string, data: UpdateType) => Observable<Type>,
+      Type,
+      AccumulatedFeature,
+      Built,
+      Collection,
+      UseNamedMethods,
+      NamedMethodsName
+    >;
+  }
+
+  public delete(): CrudMethodReturn<
+    "delete",
+    (id: string) => Observable<void>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Collection,
+    UseNamedMethods,
+    NamedMethodsName
+  > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      _delete,
+    };
+
+    return this as unknown as CrudMethodReturn<
+      "delete",
+      (id: string) => Observable<void>,
+      Type,
+      AccumulatedFeature,
+      Built,
+      Collection,
+      UseNamedMethods,
+      NamedMethodsName
     >;
   }
 
   private useEntities = false;
 
-  entities(): EntitiesReturn<Type, AccumulatedFeature, Built, Collection, CollectionMethods> {
+  entities(): EntitiesReturn<
+    Type,
+    AccumulatedFeature,
+    Built,
+    Collection,
+    UseNamedMethods,
+    NamedMethodsName
+  > {
     this.useEntities = true;
-    return this as EntitiesReturn<Type, AccumulatedFeature, Built, Collection, CollectionMethods>;
+    return this as EntitiesReturn<
+      Type,
+      AccumulatedFeature,
+      Built,
+      Collection,
+      UseNamedMethods,
+      NamedMethodsName
+    >;
   }
 
   private useNamedEntities = false;
   private collection = "";
 
   namedEntities<const CollectionName extends string>(
-    collection: CollectionName,
+    collection: DeriveConsistentCollectionAndMethodName<CollectionName, NamedMethodsName>,
   ): Type extends Entity
-    ? NamedEntitiesReturn<Type, AccumulatedFeature, Built, CollectionName, CollectionMethods>
+    ? NamedEntitiesReturn<
+        Type,
+        AccumulatedFeature,
+        Built,
+        CollectionName,
+        UseNamedMethods,
+        NamedMethodsName
+      >
     : never {
     this.useNamedEntities = true;
     this.collection = collection;
 
     return this as unknown as Type extends Entity
-      ? NamedEntitiesReturn<Type, AccumulatedFeature, Built, CollectionName, CollectionMethods>
+      ? NamedEntitiesReturn<
+          Type,
+          AccumulatedFeature,
+          Built,
+          CollectionName,
+          UseNamedMethods,
+          NamedMethodsName
+        >
       : never;
   }
 
-  private useCollectionMethods = false;
+  private useNamedMethods = false;
+  private methodName = "";
 
-  collectionMethods(): Omit<
-    Builder<Type, AccumulatedFeature, [...Built, "collectionMethods"], Collection, true>,
-    Built[number] | "collectionMethods"
+  namedMethods<const NamedMethod extends string>(
+    name: DeriveConsistentCollectionAndMethodName<NamedMethod, Collection>,
+  ): Omit<
+    Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, true, NamedMethod>,
+    Built[number] | "namedMethods"
   > {
-    this.useCollectionMethods = true;
-    return this as Omit<
-      Builder<Type, AccumulatedFeature, [...Built, "collectionMethods"], Collection, true>,
-      Built[number] | "collectionMethods"
+    this.useNamedMethods = true;
+    this.methodName = name;
+
+    return this as unknown as Omit<
+      Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, true, NamedMethod>,
+      Built[number] | "namedMethods"
     >;
   }
 
@@ -233,17 +411,17 @@ class Builder<
         return {
           ...Object.entries(this.accumulatedCrudFeatureMethods).reduce(
             (acc, [key, value]) => {
-              const resolvedKey = this.useCollectionMethods
-                ? key + this.collection.charAt(0).toUpperCase() + this.collection.slice(1)
+              const resolvedKey = this.useNamedMethods
+                ? key + this.methodName.charAt(0).toUpperCase() + this.methodName.slice(1)
                 : key;
               acc = {
                 ...acc,
-                [resolvedKey]: value(httpClient, apiUrl),
+                [resolvedKey]: value(httpClient, apiUrl, this.httpOptions),
               };
               return acc;
             },
-            {} as CollectionMethods extends true
-              ? CollectionCrudMethods<Collection, AccumulatedFeature["methods"]>
+            {} as UseNamedMethods extends true
+              ? CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>
               : AccumulatedFeature["methods"],
           ),
         };
@@ -251,17 +429,13 @@ class Builder<
     ) as SignalStoreFeature<
       EmptyFeatureResult,
       Omit<AccumulatedFeature, "methods"> & {
-        methods: CollectionMethods extends true
-          ? CollectionCrudMethods<Collection, AccumulatedFeature["methods"]>
+        methods: UseNamedMethods extends true
+          ? CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>
           : AccumulatedFeature["methods"];
       }
     >;
   }
 }
-
-type CollectionCrudMethods<Collection extends string, Methods extends Record<string, unknown>> = {
-  [Key in string & keyof Methods as `${Key}${Capitalize<Collection>}`]: Methods[Key];
-};
 
 interface User {
   id: string;
@@ -271,22 +445,16 @@ export const ProtoProgressStore = signalStore(
   { providedIn: "root" },
   Builder.of<User>(() => "")
     .get()
+    .namedMethods("users")
+    .getAll()
+    .pagedSearch()
     .create()
-    .namedEntities("user")
-    .collectionMethods()
+    .update()
+    .delete()
+    .namedEntities("users")
     .build(),
   withDevtools("Users"),
   withMethods((store) => ({
-    add: rxMethod<void>(
-      pipe(
-        tap(() =>
-          updateState(
-            store,
-            "[Update]",
-            addEntity({ id: `${store.userIds().length + 1}` }, { collection: "user" }),
-          ),
-        ),
-      ),
-    ),
+    add: rxMethod<void>(pipe(tap(() => {}))),
   })),
 );
