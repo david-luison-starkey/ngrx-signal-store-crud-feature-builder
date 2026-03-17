@@ -13,7 +13,7 @@ import {
 import { rxMethod } from "@ngrx/signals/rxjs-interop";
 import { pipe, switchMap, tap } from "rxjs";
 import { withCrudMethods } from "./feature";
-import { type QueryString } from "./models";
+import { type HttpClientParams } from "./models";
 
 describe("Crud Methods Builder", () => {
   it("should execute apiUrlFactory callback in an injection context", () => {
@@ -202,18 +202,27 @@ describe("Crud Methods Builder", () => {
     });
 
     it.each([
-      { apiUrl: () => leadingForwardSlashApiUrl, searchQuery: "?name=Daz" },
-      { apiUrl: () => trailingForwardSlashApiUrl, searchQuery: "?age=343" },
+      {
+        apiUrl: () => leadingForwardSlashApiUrl,
+        searchQuery: { name: "Daz" },
+        expectedSearchQuery: "?name=Daz",
+      },
+      {
+        apiUrl: () => trailingForwardSlashApiUrl,
+        searchQuery: { age: 343 },
+        expectedSearchQuery: "?age=343",
+      },
       {
         apiUrl: () => leadingAndTrailingForwardSlashApiUrl,
-        searchQuery: "?name=Mi&age=34",
+        searchQuery: { name: "Mi", age: 34 },
+        expectedSearchQuery: "?name=Mi&age=34",
       },
-    ])("_pagedSearch", ({ apiUrl, searchQuery }) => {
+    ])("_pagedSearch", ({ apiUrl, searchQuery, expectedSearchQuery }) => {
       const Store = signalStore(
         withState({}),
         withCrudMethods<User>(apiUrl).pagedSearch().build(),
         withMethods((store) => ({
-          search: rxMethod<QueryString>(pipe(switchMap((query) => store._pagedSearch(query)))),
+          search: rxMethod<HttpClientParams>(pipe(switchMap((query) => store._pagedSearch(query)))),
         })),
       );
 
@@ -223,10 +232,10 @@ describe("Crud Methods Builder", () => {
 
       const httpTesting = TestBed.inject(HttpTestingController);
       const store = TestBed.inject(Store);
-      store.search(searchQuery as QueryString);
+      store.search(searchQuery as HttpClientParams);
 
       const req = httpTesting.expectOne(
-        `${normalisedApiUrl}${searchQuery}`,
+        `${normalisedApiUrl}${expectedSearchQuery}`,
         "Request to search for users by query",
       );
 

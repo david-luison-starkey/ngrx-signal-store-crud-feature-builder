@@ -1,18 +1,13 @@
-import { HttpClient, HttpHeaders } from "@angular/common/http";
-import { inject } from "@angular/core";
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { type EmptyFeatureResult, type SignalStoreFeature, signalStoreFeature, withMethods } from '@ngrx/signals';
+import { first, type Observable } from 'rxjs';
 import {
-  type EmptyFeatureResult,
-  type SignalStoreFeature,
-  signalStoreFeature,
-  withMethods,
-} from "@ngrx/signals";
-import { first, type Observable } from "rxjs";
-import {
+  type HttpClientParams,
   type HttpOptions,
   type PagedResponse,
-  type PrivateSignalStoreCrudMethods,
-  type QueryString,
-} from "./models";
+  type PrivateSignalStoreCrudMethods
+} from './models';
 
 /**
  * Builder utility class to incrementally construct a {@link signalStoreFeature}
@@ -73,9 +68,9 @@ export class CrudBuilder<
     httpClient.get<Type[]>(apiUrl, this.httpOptions).pipe(first());
 
   private readonly _pagedSearch =
-    (httpClient: HttpClient, apiUrl: string) => (searchQuery: QueryString) =>
+    (httpClient: HttpClient, apiUrl: string) => (searchParams: HttpClientParams) =>
       httpClient
-        .get<PagedResponse<Type>>(`${apiUrl}${searchQuery}`, this.httpOptions)
+        .get<PagedResponse<Type>>(`${apiUrl}`, { params: { ...searchParams }, ...this.httpOptions })
         .pipe(first());
 
   private readonly _create =
@@ -206,8 +201,12 @@ export class CrudBuilder<
   }
 
   /**
-   * Constructs a `_pagedSearch(searchQuery: QueryString): Observable<PagedResponse<Type>>`
-   * method that sends an http GET request to {@link apiUrlFactory}`?searchQuery`.
+   * Constructs a `_pagedSearch(searchParams: HttpClientParams): Observable<PagedResponse<Type>>`
+   * method that sends an http GET request to {@link apiUrlFactory}`?searchParams`.
+   *
+   * `searchParams` mirrors the `params` argument for Angular's `HttpClient`
+   * `options` object. Mapping of `searchParams` to a valid URL query string is
+   * delegated to Angular.
    *
    * {@link httpOptions} is used to configure the {@link HttpClient}.
    *
@@ -220,7 +219,7 @@ export class CrudBuilder<
    *    .pagedSearch()
    *    .build(),
    *  withMethods((store) => ({
-   *      getCourse: rxMethod<QueryString>(
+   *      getCourse: rxMethod<HttpClientParams>(
    *        pipe(
    *          switchMap((query) => store._pagedSearch(query))
    *        )
@@ -233,7 +232,7 @@ export class CrudBuilder<
   public pagedSearch(): CrudBuilder<
     Type,
     AccumulatedCrudMethods &
-      Record<"_pagedSearch", (searchQuery: QueryString) => Observable<PagedResponse<Type>>>
+      Record<"_pagedSearch", (searchParams: HttpClientParams) => Observable<PagedResponse<Type>>>
   > {
     this.accumulatedCrudMethods = {
       ...this.accumulatedCrudMethods,
@@ -242,13 +241,13 @@ export class CrudBuilder<
     return this as CrudBuilder<
       Type,
       AccumulatedCrudMethods &
-        Record<"_pagedSearch", (searchQuery: QueryString) => Observable<PagedResponse<Type>>>
+        Record<"_pagedSearch", (searchParams: HttpClientParams) => Observable<PagedResponse<Type>>>
     >;
   }
 
   /**
-   * Constructs a `_create(searchQuery: Type): Observable<Type>`
-   * method that sends an http POST request to {@link apiUrlFactory}`?searchQuery`.
+   * Constructs a `_create(searchParams: Type): Observable<Type>`
+   * method that sends an http POST request to {@link apiUrlFactory}.
    *
    * {@link httpOptions} is used to configure the {@link HttpClient}.
    *
@@ -288,7 +287,7 @@ export class CrudBuilder<
 
   /**
    * Constructs an `_update(id: string, data: UpdateType): Observable<Type>>`
-   * method that sends an http PUT request to {@link apiUrlFactory}`?searchQuery`.
+   * method that sends an http PUT request to {@link apiUrlFactory}/id.
    *
    * {@link httpOptions} is used to configure the {@link HttpClient}.
    *

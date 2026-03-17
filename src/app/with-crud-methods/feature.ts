@@ -25,7 +25,7 @@ import { type HttpOptions } from "./models";
  *  withCrudMethods<Course>(() => `${inject(API_BASE_URL)}/courses`)
  *    .get() // _get(id)
  *    .getAll() // _getAll()
- *    .pagedSearch() // _pagedSearch(searchQuery: QueryString)
+ *    .pagedSearch() // _pagedSearch(searchParams: HttpClientParams)
  *    .create<CreateCourse>(), // _create(newCourse: CreateCourse)
  *    .update<UpdateCourse>(), // _update(id: string, updatedCourse: UpdateCourse)
  *    .delete() // _delete(id)

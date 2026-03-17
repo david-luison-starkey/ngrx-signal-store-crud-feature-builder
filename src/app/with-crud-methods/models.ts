@@ -14,12 +14,19 @@ export type CrudMethods = "get" | "getAll" | "pagedSearch" | "create" | "update"
 export type PrivateSignalStoreCrudMethods = `_${CrudMethods}`;
 
 /**
- * Type to enforce the shape of search query strings provided to `_pagedSearch`.
+ * Type vendored from `@angular/common/http` crud methods `options: { params }`
+ * parameter.
+ *
+ * @see https://angular.dev/api/common/http/HttpClient
  */
-export type QueryString = `?${string}`;
+export type HttpClientParams =
+  | HttpParams
+  | Record<string, string | number | boolean | readonly (string | number | boolean)[]>;
 
 /**
  * Type vendored from `@angular/common/http` crud methods `options` parameter.
+ *
+ * @see https://angular.dev/api/common/http/HttpClient
  */
 export type HttpOptions = {
   headers?: HttpHeaders | Record<string, string | string[]>;
