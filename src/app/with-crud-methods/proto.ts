@@ -390,21 +390,28 @@ class Builder<
   }
 }
 
+export function withCrudMethods<Type = never>(
+  apiUrlFactory: () => string,
+  httpOptions?: Partial<HttpOptions>,
+): Builder<Type> {
+  return Builder.of<Type>(apiUrlFactory, httpOptions);
+}
+
 interface User {
   id: string;
 }
 
 export const ProtoProgressStore = signalStore(
   { providedIn: "root" },
-  Builder.of<User>(() => "")
+  withCrudMethods<User>(() => "")
     .get()
     .namedMethods("user")
     .namedEntities("user")
     .getAll()
     .pagedSearch()
     .create()
-    .update()
     .delete()
+    .update()
     .build(),
   withDevtools("Users"),
   withMethods((store) => ({
