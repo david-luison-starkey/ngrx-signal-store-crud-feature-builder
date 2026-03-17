@@ -4,6 +4,7 @@ import { patchState, signalStore, withMethods, withState } from "@ngrx/signals";
 import { withCrudMethods } from "./with-crud-methods/feature";
 import { rxMethod } from "@ngrx/signals/rxjs-interop";
 import { pipe, switchMap, tap } from "rxjs";
+import { ProtoProgressStore } from "./with-crud-methods/proto";
 
 interface User {
   id: string;
@@ -45,4 +46,11 @@ const Store = signalStore(
 export class App {
   protected readonly title = signal("ngrx-signal-store-crud-feature-builder");
   store = inject(Store);
+  proto = inject(ProtoProgressStore);
+
+  constructor() {
+    console.log(this.proto.userEntities());
+    console.log(this.proto.userIds());
+    console.log(this.proto.userEntityMap());
+  }
 }
