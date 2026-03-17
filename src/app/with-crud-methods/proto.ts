@@ -2,13 +2,11 @@ import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { inject } from "@angular/core";
 import {
   type EmptyFeatureResult,
-  patchState,
   signalStore,
   type SignalStoreFeature,
   signalStoreFeature,
   type SignalStoreFeatureResult,
   type,
-  withHooks,
   withMethods
 } from "@ngrx/signals";
 import {
@@ -20,8 +18,10 @@ import {
   NamedEntityState,
   withEntities
 } from "@ngrx/signals/entities";
-import { first, type Observable } from "rxjs";
+import { first, type Observable, pipe, tap } from "rxjs";
 import { type HttpOptions } from "./models";
+import { updateState, withDevtools } from "@angular-architects/ngrx-toolkit";
+import { rxMethod } from "@ngrx/signals/rxjs-interop";
 
 type Entity = {
   id: EntityId;
@@ -206,13 +206,13 @@ class Builder<
       : never;
   }
 
-  private useCollectionMethods: true | false = false as const;
+  private useCollectionMethods = false;
 
   collectionMethods(): Omit<
     Builder<Type, AccumulatedFeature, [...Built, "collectionMethods"], Collection, true>,
     Built[number] | "collectionMethods"
   > {
-    this.useCollectionMethods = true as const;
+    this.useCollectionMethods = true;
     return this as Omit<
       Builder<Type, AccumulatedFeature, [...Built, "collectionMethods"], Collection, true>,
       Built[number] | "collectionMethods"
@@ -275,9 +275,18 @@ export const ProtoProgressStore = signalStore(
     .namedEntities("user")
     .collectionMethods()
     .build(),
-  withHooks({
-    onInit(store) {
-      patchState(store, addEntity({ id: "1" }, { collection: "user" }));
-    },
-  }),
+  withDevtools("Users"),
+  withMethods((store) => ({
+    add: rxMethod<void>(
+      pipe(
+        tap(() =>
+          updateState(
+            store,
+            "[Update]",
+            addEntity({ id: `${store.userIds().length + 1}` }, { collection: "user" }),
+          ),
+        ),
+      ),
+    ),
+  })),
 );

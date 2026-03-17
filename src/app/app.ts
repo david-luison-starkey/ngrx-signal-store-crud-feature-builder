@@ -52,5 +52,8 @@ export class App {
     console.log(this.proto.userEntities());
     console.log(this.proto.userIds());
     console.log(this.proto.userEntityMap());
+    this.proto.add();
+    this.proto.add();
+    this.proto.add();
   }
 }
