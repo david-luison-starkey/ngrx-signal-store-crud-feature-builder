@@ -1,3 +1,13 @@
+import {
+  type CallStateSignals,
+  type CallStateSlice,
+  type NamedCallStateSignals,
+  type NamedCallStateSlice,
+  setError,
+  setLoading,
+  updateState,
+  withCallState,
+} from "@angular-architects/ngrx-toolkit";
 import { HttpClient, HttpHeaders } from "@angular/common/http";
 import { inject } from "@angular/core";
 import {
@@ -9,132 +19,705 @@ import {
   type SignalStoreFeatureResult,
   type,
   withMethods,
-  WritableStateSource
+  withState,
+  type WritableStateSource,
 } from "@ngrx/signals";
 import {
   addEntity,
+  type EntityId,
   type EntityProps,
   type EntityState,
-  NamedEntityProps,
-  NamedEntityState,
-  withEntities
+  type NamedEntityProps,
+  type NamedEntityState,
+  withEntities,
 } from "@ngrx/signals/entities";
-import { type Observable, pipe, switchMap, tap } from "rxjs";
-import {
-  CollectionCrudMethods,
-  type DeriveConsistentCollectionAndMethodName,
-  type Entity,
-  type HttpOptions,
-  PagedResponse
-} from "./models";
-import { updateState, withDevtools } from "@angular-architects/ngrx-toolkit";
-import { rxMethod } from "@ngrx/signals/rxjs-interop";
-import { _create, _delete, _get, _getAll, _pagedSearch, _update } from "./crud-functions";
+import { type RxMethod, rxMethod } from "@ngrx/signals/rxjs-interop";
+import { catchError, EMPTY, first, Observable, pipe, switchMap, tap } from "rxjs";
+import { type Includes, type IsLowercase, type NonEmptyString } from "type-fest";
+import { type HttpClientParams, type HttpOptions, type PagedResponse } from "./models";
+
+function noop() {}
+
+export type NameConvention<Name extends string> =
+  IsLowercase<Name> extends true ? NonEmptyString<Name> : never;
+
+export type IncludesAny<StringArray extends string[], StringUnion extends string> = [
+  StringUnion & StringArray[number],
+] extends [never]
+  ? false
+  : true;
+
+export type StateSliceSpecificCrudMethods<Built extends FluentBuilderMethods[]> =
+  IncludesAny<Built, "state" | "namedState"> extends true
+    ? Exclude<CrudMethods, "getAll" | "pagedSearch">
+    : CrudMethods;
+
+export type CollectionRequired<Built extends string[]> = IncludesAny<
+  Built,
+  "namedMethods" | "namedEntities" | "namedRequestStatus"
+>;
+
+export type FluentCrudBuilderMethodKeyMapper<
+  Key extends CrudMethods,
+  Built extends string[],
+  Collection extends string = "",
+> =
+  Includes<Built, "public"> extends true
+    ? Includes<Built, "namedMethods"> extends true
+      ? `${Key}${Capitalize<Collection>}`
+      : Key
+    : Includes<Built, "private"> extends true
+      ? Includes<Built, "namedMethods"> extends true
+        ? `_${Key}${Capitalize<Collection>}`
+        : `_${Key}`
+      : never;
+
+export type FluentCrudBuilderMethodKeyName<
+  Key extends CrudMethods,
+  Built extends string[],
+  Collection extends string,
+> =
+  CollectionRequired<Built> extends true
+    ? Collection extends ""
+      ? never
+      : FluentCrudBuilderMethodKeyMapper<Key, Built, Collection>
+    : FluentCrudBuilderMethodKeyMapper<Key, Built>;
 
 export type CrudMethods = "get" | "getAll" | "pagedSearch" | "create" | "update" | "delete";
 
-type CrudMethodReturn<
-  MethodName extends CrudMethods,
-  Method extends Function,
+export type CustomisationMethods =
+  | "stateless"
+  | "state"
+  | "namedState"
+  | "entities"
+  | "namedEntities"
+  | "namedMethods"
+  | "public"
+  | "private"
+  | "rawMethods"
+  | "patchState"
+  | "devToolsAware"
+  | "requestStatus"
+  | "namedRequestStatus";
+
+export type Build = "build";
+
+export type FluentBuilderMethods = CustomisationMethods | CrudMethods | Build;
+
+export type PrivateMembers = "apiUrlFactory" | "httpOptions" | "accumulatedCrudFeatureMethods";
+
+export type InitialExcluded = Exclude<FluentBuilderMethods, "private" | "public">; // | PrivateMembers;
+
+export type Of<Type> = Omit<FluentCrudBuilder<Type>, InitialExcluded>;
+
+export type PublicReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
-  Built extends string[],
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
   Collection extends string,
-  NamedMethodsName extends string,
 > = Omit<
-  Builder<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature,
+    [...Built, "public"],
+    Exclude<
+      Excluded | "public" | "private",
+      "namedMethods" | "stateless" | "state" | "namedState" | "entities" | "namedEntities"
+    >,
+    Collection
+  >,
+  Exclude<
+    Excluded | "public" | "private",
+    "namedMethods" | "stateless" | "state" | "namedState" | "entities" | "namedEntities"
+  >
+>;
+
+export type PrivateReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature,
+    [...Built, "private"],
+    Exclude<
+      Excluded | "public" | "private",
+      "namedMethods" | "stateless" | "state" | "entities" | "namedEntities"
+    >,
+    Collection
+  >,
+  Exclude<
+    Excluded | "public" | "private",
+    "namedMethods" | "stateless" | "state" | "namedState" | "entities" | "namedEntities"
+  >
+>;
+
+export type NamedMethodsReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature,
+    [...Built, "namedMethods"],
+    Exclude<
+      Excluded | "namedMethods",
+      "stateless" | "state" | "namedState" | "entities" | "namedEntities"
+    >,
+    Collection
+  >,
+  Exclude<
+    Excluded | "namedMethods",
+    "stateless" | "state" | "namedState" | "entities" | "namedEntities"
+  >
+>;
+
+export type CrudStateSlice<Type> = {
+  data: Type | null;
+};
+
+export type StateReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
     Type,
     AccumulatedFeature & {
-      methods: Record<`_${MethodName}`, Method>;
+      state: CrudStateSlice<Type>;
     },
-    [...Built, MethodName],
-    Collection,
-    NamedMethodsName
+    [...Built, "state"],
+    Exclude<
+      | Excluded
+      | "namedMethods"
+      | "stateless"
+      | "state"
+      | "namedState"
+      | "entities"
+      | "namedEntities",
+      "rawMethods" | "patchState"
+    >,
+    Collection
   >,
-  Built[number] | MethodName
+  Exclude<
+    Excluded | "namedMethods" | "stateless" | "state" | "namedState" | "entities" | "namedEntities",
+    "rawMethods" | "patchState"
+  >
 >;
 
-type EntitiesReturn<
+export type NamedCrudStateSlice<Type, Name extends string> = {
+  [Key in keyof CrudStateSlice<Type> as Name extends ""
+    ? `${Name}${Key}`
+    : `${Name}${Capitalize<Key>}`]: CrudStateSlice<Type>[Key];
+};
+
+export type NamedStateReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
-  Built extends string[],
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
   Collection extends string,
-  NamedMethodsName extends string,
 > = Omit<
-  Builder<
+  FluentCrudBuilder<
     Type,
-    Omit<AccumulatedFeature, "state" | "props"> & {
-      state: EntityState<Type>;
-      props: EntityProps<Type>;
+    AccumulatedFeature & {
+      state: NamedCrudStateSlice<Type, Collection>;
     },
-    [...Built, "entities", "namedEntities"],
-    Collection,
-    NamedMethodsName
+    [...Built, "namedState"],
+    Exclude<
+      | Excluded
+      | "namedMethods"
+      | "stateless"
+      | "state"
+      | "namedState"
+      | "entities"
+      | "namedEntities",
+      "rawMethods" | "patchState"
+    >,
+    Collection
   >,
-  Built[number] | "entities" | "namedEntities"
+  Exclude<
+    Excluded | "namedMethods" | "stateless" | "state" | "namedState" | "entities" | "namedEntities",
+    "rawMethods" | "patchState"
+  >
 >;
 
-type NamedEntitiesReturn<
+export type StatelessReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
-  Built extends string[],
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
   Collection extends string,
-  NamedMethodsName extends string,
 > = Omit<
-  Builder<
+  FluentCrudBuilder<
     Type,
-    Omit<AccumulatedFeature, "state" | "props"> & {
-      state: NamedEntityState<Type, Collection>;
-      props: NamedEntityProps<Type, Collection>;
-    },
-    [...Built, "namedEntities" | "entities"],
-    Collection,
-    NamedMethodsName
+    AccumulatedFeature,
+    [...Built, "stateless"],
+    Exclude<
+      | Excluded
+      | "namedMethods"
+      | "stateless"
+      | "state"
+      | "namedState"
+      | "entities"
+      | "namedEntities",
+      CrudMethods
+    >,
+    Collection
   >,
-  Built[number] | "namedEntities" | "entities"
+  Exclude<
+    Excluded | "namedMethods" | "stateless" | "state" | "namedState" | "entities" | "namedEntities",
+    CrudMethods
+  >
 >;
 
-const _getAndUpdateState =
-  (
-    httpClient: HttpClient,
-    apiUrl: string,
-    httpOptions: HttpOptions,
-    store: WritableStateSource<any>,
-    withCollection: boolean,
-    collection: string = "",
-    withDevTools: boolean,
-    devToolsName: string = "",
-  ) =>
-  <Type extends Entity>() =>
-    rxMethod<string>(
-      pipe(
-        switchMap((id) => _get(httpClient, apiUrl, httpOptions)<Type>(id)),
-        tap((response) => {
-          withDevTools
-            ? updateState(
-                store,
-                devToolsName,
-                withCollection ? addEntity(response, { collection }) : addEntity(response),
-              )
-            : patchState(
-                store,
-                withCollection ? addEntity(response, { collection }) : addEntity(response),
-              );
-        }),
-      ),
-    );
+export type Entity = {
+  id: EntityId;
+};
 
-class Builder<
+export type EntitiesReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Type extends Entity
+  ? Omit<
+      FluentCrudBuilder<
+        Type,
+        AccumulatedFeature & {
+          state: EntityState<Type>;
+          props: EntityProps<Type>;
+        },
+        [...Built, "entities"],
+        Exclude<
+          | Excluded
+          | "namedMethods"
+          | "stateless"
+          | "state"
+          | "namedState"
+          | "entities"
+          | "namedEntities",
+          "rawMethods" | "patchState"
+        >,
+        Collection
+      >,
+      Exclude<
+        | Excluded
+        | "namedMethods "
+        | "stateless"
+        | "state"
+        | "namedState"
+        | "entities"
+        | "namedEntities",
+        "rawMethods" | "patchState"
+      >
+    >
+  : never;
+
+export type NamedEntitiesReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Type extends Entity
+  ? Omit<
+      FluentCrudBuilder<
+        Type,
+        AccumulatedFeature & {
+          state: NamedEntityState<Type, Collection>;
+          props: NamedEntityProps<Type, Collection>;
+        },
+        [...Built, "namedEntities"],
+        Exclude<
+          | Excluded
+          | "namedMethods"
+          | "stateless"
+          | "state"
+          | "namedState"
+          | "entities"
+          | "namedEntities",
+          "rawMethods" | "patchState"
+        >,
+        Collection
+      >,
+      Exclude<
+        | Excluded
+        | "namedMethods"
+        | "stateless"
+        | "state"
+        | "namedState"
+        | "entities"
+        | "namedEntities",
+        "rawMethods" | "patchState"
+      >
+    >
+  : never;
+
+export type RawMethodsReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature,
+    [...Built, "rawMethods"],
+    Exclude<Excluded | "rawMethods" | "patchState", StateSliceSpecificCrudMethods<Built>>,
+    Collection
+  >,
+  Exclude<Excluded | "rawMethods" | "patchState", StateSliceSpecificCrudMethods<Built>>
+>;
+
+export type PatchStateReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature,
+    [...Built, "patchState"],
+    Exclude<
+      Excluded | "patchState" | "rawMethods",
+      | "devToolsAware"
+      | "requestStatus"
+      | "namedRequestStatus"
+      | StateSliceSpecificCrudMethods<Built>
+    >,
+    Collection
+  >,
+  Exclude<
+    Excluded | "patchState" | "rawMethods",
+    "devToolsAware" | "requestStatus" | "namedRequestStatus" | StateSliceSpecificCrudMethods<Built>
+  >
+>;
+
+export type DevToolsAwareReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature,
+    [...Built, "devToolsAware"],
+    Exclude<
+      Excluded | "devToolsAware",
+      "requestStatus" | "namedRequestStatus" | StateSliceSpecificCrudMethods<Built>
+    >,
+    Collection
+  >,
+  Exclude<
+    Excluded | "devToolsAware",
+    "requestStatus" | "namedRequestStatus" | StateSliceSpecificCrudMethods<Built>
+  >
+>;
+
+export type RequestStatusReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature & { state: CallStateSlice; props: CallStateSignals },
+    [...Built, "requestStatus"],
+    Exclude<
+      Excluded | "requestStatus" | "namedRequestStatus" | "devToolsAware",
+      StateSliceSpecificCrudMethods<Built>
+    >,
+    Collection
+  >,
+  Exclude<
+    Excluded | "requestStatus" | "namedRequestStatus" | "devToolsAware",
+    StateSliceSpecificCrudMethods<Built>
+  >
+>;
+
+export type NamedRequestStatusReturnType<
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature & {
+      state: NamedCallStateSlice<Collection>;
+      props: NamedCallStateSignals<Collection>;
+    },
+    [...Built, "namedRequestStatus"],
+    Exclude<
+      Excluded | "requestStatus" | "namedRequestStatus" | "devToolsAware",
+      StateSliceSpecificCrudMethods<Built>
+    >,
+    Collection
+  >,
+  Exclude<
+    Excluded | "requestStatus" | "namedRequestStatus" | "devToolsAware",
+    StateSliceSpecificCrudMethods<Built>
+  >
+>;
+
+export type CrudMethodReturnType<
+  CrudMethod extends CrudMethods,
+  MethodName extends string,
+  MethodSignature,
+  Type,
+  AccumulatedFeature extends SignalStoreFeatureResult,
+  Built extends FluentBuilderMethods[],
+  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Collection extends string,
+> = Omit<
+  FluentCrudBuilder<
+    Type,
+    AccumulatedFeature & {
+      methods: Record<MethodName, MethodSignature>;
+    },
+    [...Built, CrudMethod],
+    Exclude<Excluded | CrudMethod | CustomisationMethods, Build>,
+    Collection
+  >,
+  Exclude<Excluded | CrudMethod | CustomisationMethods, Build>
+>;
+
+export type GetObservable<Type> = (id: string) => Observable<Type>;
+
+export type GetRxMethod = RxMethod<string>;
+
+export type GetAllObservable<Type> = () => Observable<Type[]>;
+
+export type GetAllRxMethod = RxMethod<void>;
+
+export type PagedSearchObservable<Type> = (
+  searchParams: HttpClientParams,
+) => Observable<PagedResponse<Type>>;
+
+export type PagedSearchRxMethod = RxMethod<HttpClientParams>;
+
+export type CreateObservable<Type, CreateType> = (data: CreateType) => Observable<Type>;
+
+export type CreateRxMethod<CreateType> = RxMethod<CreateType>;
+
+export type UpdateObservable<Type, UpdateType> = (id: string, data: UpdateType) => Observable<Type>;
+
+export type UpdateRxMethod<UpdateType> = RxMethod<{
+  id: string;
+  data: UpdateType;
+}>;
+
+export type DeleteObservable = (id: string) => Observable<void>;
+
+export type DeleteRxMethod = RxMethod<string>;
+
+export type CrudMethodSignature<
+  ObservableSignature extends (...args: any[]) => Observable<any>,
+  RxMethodSignature extends RxMethod<any>,
+  Built extends FluentBuilderMethods[],
+> =
+  IncludesAny<Built, "stateless" | "rawMethods"> extends true
+    ? ObservableSignature
+    : Includes<Built, "patchState"> extends true
+      ? RxMethodSignature
+      : never;
+
+class FluentCrudBuilder<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult = {
     state: object;
     props: object;
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     methods: {};
   },
-  Built extends string[] = [],
+  Built extends FluentBuilderMethods[] = [],
+  Excluded extends FluentBuilderMethods | PrivateMembers = InitialExcluded,
   Collection extends string = "",
-  NamedMethodsName extends string = "",
 > {
+  private useStateType: "stateless" | "state" | "namedState" | "entities" | "namedEntities" | null =
+    null;
+  private namedStateName: string | null = null;
+  private namedEntitiesName: string | null = null;
+  private useNamedMethods = false;
+  private namedMethodsName: string | null = null;
+  private useAccessModifier: "public" | "private" | null = null;
+  private useMethodBehaviour: "raw" | "patch" | null = null;
+  private useDevToolsAware = false;
+  private devToolsActionPrefix: `[${Capitalize<string>}]` | null = null;
+  private useRequestStatus = false;
+  private useNamedRequestStatus = false;
+  private namedRequestStatusName: string | null = null;
+
+  private getNamedStateKey() {
+    return `${this.namedStateName}Data`;
+  }
+
+  private getMethodFactory() {
+    if (this.useMethodBehaviour === "raw") {
+      return (httpClient: HttpClient, apiUrl: string, httpOptions: HttpOptions) => (id: string) =>
+        httpClient.get<Type>(`${apiUrl}/${id}`, httpOptions).pipe(first());
+    }
+
+    if (this.useRequestStatus || this.useNamedRequestStatus) {
+      return <Type extends Entity>(
+        httpClient: HttpClient,
+        apiUrl: string,
+        httpOptions: HttpOptions,
+        store: WritableStateSource<any>,
+      ) =>
+        rxMethod<string>(
+          pipe(
+            tap(() =>
+              this.useRequestStatus || this.useNamedRequestStatus
+                ? this.useDevToolsAware
+                  ? updateState(
+                      store,
+                      `${this.devToolsActionPrefix!} loading`,
+                      this.useRequestStatus
+                        ? setLoading()
+                        : setLoading(this.namedRequestStatusName!),
+                    )
+                  : patchState(
+                      store,
+                      this.useRequestStatus
+                        ? setLoading()
+                        : setLoading(this.namedRequestStatusName!),
+                    )
+                : noop(),
+            ),
+            switchMap((id: string) =>
+              httpClient.get<Type>(`${apiUrl}/${id}`, httpOptions).pipe(first()),
+            ),
+            tap((data: Type) => {
+              if (this.useDevToolsAware) {
+                updateState(
+                  store,
+                  `${this.devToolsActionPrefix!} loaded`,
+                  this.useStateType === "entities"
+                    ? addEntity(data)
+                    : this.useStateType === "namedEntities"
+                      ? addEntity(data, { collection: this.namedEntitiesName! })
+                      : this.useStateType === "state"
+                        ? () => ({ data })
+                        : () => ({ [this.getNamedStateKey()]: data }),
+                );
+              } else {
+                patchState(
+                  store,
+                  this.useStateType === "entities"
+                    ? addEntity(data)
+                    : this.useStateType === "namedEntities"
+                      ? addEntity(data, { collection: this.namedEntitiesName! })
+                      : this.useStateType === "state"
+                        ? () => ({ data })
+                        : () => ({ [this.getNamedStateKey()]: data }),
+                );
+
+                if (this.useRequestStatus || this.useNamedRequestStatus) {
+                  if (this.useDevToolsAware) {
+                    updateState(
+                      store,
+                      `${this.devToolsActionPrefix!} loaded`,
+                      this.useRequestStatus
+                        ? setLoading()
+                        : setLoading(this.namedRequestStatusName!),
+                    );
+                  } else {
+                    patchState(
+                      store,
+                      this.useRequestStatus
+                        ? setLoading()
+                        : setLoading(this.namedRequestStatusName!),
+                    );
+                  }
+                }
+              }
+            }),
+            catchError((error: unknown) => {
+              if (this.useRequestStatus || this.namedRequestStatusName) {
+                if (this.useDevToolsAware) {
+                  updateState(
+                    store,
+                    `${this.devToolsActionPrefix!} error`,
+                    this.useRequestStatus
+                      ? setError(error)
+                      : setError(error, this.namedRequestStatusName!),
+                  );
+                } else {
+                  patchState(
+                    store,
+                    this.useRequestStatus
+                      ? setError(error)
+                      : setError(error, this.namedRequestStatusName!),
+                  );
+                }
+              }
+              return EMPTY;
+            }),
+          ),
+        );
+    } else {
+      return (
+        httpClient: HttpClient,
+        apiUrl: string,
+        httpOptions: HttpOptions,
+        store: WritableStateSource<any>,
+      ) =>
+        rxMethod<string>(
+          pipe(
+            switchMap((id: string) =>
+              httpClient.get<Type & { id: string }>(`${apiUrl}/${id}`, httpOptions).pipe(first()),
+            ),
+            tap((data: Type & { id: string }) => {
+              if (this.useDevToolsAware) {
+                updateState(
+                  store,
+                  this.devToolsActionPrefix!,
+                  this.useStateType === "entities"
+                    ? addEntity(data)
+                    : addEntity(data, { collection: this.namedEntitiesName! }),
+                );
+              } else {
+                patchState(
+                  store,
+                  this.useStateType === "entities"
+                    ? addEntity(data)
+                    : addEntity(data, { collection: this.namedEntitiesName! }),
+                );
+              }
+            }),
+            catchError((error: unknown) => {
+              if (this.useDevToolsAware) {
+                updateState(store, this.devToolsActionPrefix!, setError(error));
+              } else {
+                patchState(store, setError(error));
+              }
+              return EMPTY;
+            }),
+          ),
+        );
+    }
+  }
+
   constructor(
     private readonly apiUrlFactory: () => string,
     private readonly httpOptions: Partial<HttpOptions>,
@@ -144,8 +727,8 @@ class Builder<
   public static of<Type>(
     apiUrlFactory: () => string,
     httpOptions?: Partial<HttpOptions>,
-  ): Builder<Type> {
-    return new Builder<Type>(
+  ): Of<Type> {
+    return new FluentCrudBuilder<Type>(
       apiUrlFactory,
       {
         headers: new HttpHeaders({
@@ -159,262 +742,261 @@ class Builder<
     );
   }
 
-  public get(): CrudMethodReturn<
-    "get",
-    (id: string) => Observable<Type>,
-    Type,
-    AccumulatedFeature,
-    Built,
-    Collection,
-    NamedMethodsName
-  > {
-    this.accumulatedCrudFeatureMethods = {
-      ...this.accumulatedCrudFeatureMethods,
-      _get,
-    };
-
-    return this as unknown as CrudMethodReturn<
-      "get",
-      (id: string) => Observable<Type>,
-      Type,
-      AccumulatedFeature,
-      Built,
-      Collection,
-      NamedMethodsName
-    >;
+  public(): PublicReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useAccessModifier = "public";
+    return this as never;
   }
 
-  public getAll(): CrudMethodReturn<
-    "getAll",
-    () => Observable<Type[]>,
-    Type,
-    AccumulatedFeature,
-    Built,
-    Collection,
-    NamedMethodsName
-  > {
-    this.accumulatedCrudFeatureMethods = {
-      ...this.accumulatedCrudFeatureMethods,
-      _getAll,
-    };
-
-    return this as unknown as CrudMethodReturn<
-      "getAll",
-      () => Observable<Type[]>,
-      Type,
-      AccumulatedFeature,
-      Built,
-      Collection,
-      NamedMethodsName
-    >;
+  private(): PrivateReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useAccessModifier = "private";
+    return this as never;
   }
 
-  public pagedSearch(): CrudMethodReturn<
-    "pagedSearch",
-    () => Observable<PagedResponse<Type>>,
-    Type,
-    AccumulatedFeature,
-    Built,
-    Collection,
-    NamedMethodsName
-  > {
-    this.accumulatedCrudFeatureMethods = {
-      ...this.accumulatedCrudFeatureMethods,
-      _pagedSearch,
-    };
-
-    return this as unknown as CrudMethodReturn<
-      "pagedSearch",
-      () => Observable<PagedResponse<Type>>,
-      Type,
-      AccumulatedFeature,
-      Built,
-      Collection,
-      NamedMethodsName
-    >;
-  }
-
-  public create<CreateType = Omit<Type, "id">>(): CrudMethodReturn<
-    "create",
-    (data: CreateType) => Observable<Type>,
-    Type,
-    AccumulatedFeature,
-    Built,
-    Collection,
-    NamedMethodsName
-  > {
-    this.accumulatedCrudFeatureMethods = {
-      ...this.accumulatedCrudFeatureMethods,
-      _create,
-    };
-
-    return this as unknown as CrudMethodReturn<
-      "create",
-      (data: CreateType) => Observable<Type>,
-      Type,
-      AccumulatedFeature,
-      Built,
-      Collection,
-      NamedMethodsName
-    >;
-  }
-
-  public update<UpdateType = Partial<Type>>(): CrudMethodReturn<
-    "update",
-    (id: string, data: UpdateType) => Observable<Type>,
-    Type,
-    AccumulatedFeature,
-    Built,
-    Collection,
-    NamedMethodsName
-  > {
-    this.accumulatedCrudFeatureMethods = {
-      ...this.accumulatedCrudFeatureMethods,
-      _update,
-    };
-
-    return this as unknown as CrudMethodReturn<
-      "update",
-      (id: string, data: UpdateType) => Observable<Type>,
-      Type,
-      AccumulatedFeature,
-      Built,
-      Collection,
-      NamedMethodsName
-    >;
-  }
-
-  public delete(): CrudMethodReturn<
-    "delete",
-    (id: string) => Observable<void>,
-    Type,
-    AccumulatedFeature,
-    Built,
-    Collection,
-    NamedMethodsName
-  > {
-    this.accumulatedCrudFeatureMethods = {
-      ...this.accumulatedCrudFeatureMethods,
-      _delete,
-    };
-
-    return this as unknown as CrudMethodReturn<
-      "delete",
-      (id: string) => Observable<void>,
-      Type,
-      AccumulatedFeature,
-      Built,
-      Collection,
-      NamedMethodsName
-    >;
-  }
-
-  private useEntities = false;
-
-  entities(): EntitiesReturn<Type, AccumulatedFeature, Built, Collection, NamedMethodsName> {
-    this.useEntities = true;
-    return this as EntitiesReturn<Type, AccumulatedFeature, Built, Collection, NamedMethodsName>;
-  }
-
-  private useNamedEntities = false;
-  private collection = "";
-
-  namedEntities<const CollectionName extends string>(
-    collection: DeriveConsistentCollectionAndMethodName<CollectionName, NamedMethodsName>,
-  ): Type extends Entity
-    ? NamedEntitiesReturn<Type, AccumulatedFeature, Built, CollectionName, NamedMethodsName>
-    : never {
-    this.useNamedEntities = true;
-    this.collection = collection;
-
-    return this as unknown as Type extends Entity
-      ? NamedEntitiesReturn<Type, AccumulatedFeature, Built, CollectionName, NamedMethodsName>
-      : never;
-  }
-
-  private useNamedMethods = false;
-  private methodName = "";
-
-  namedMethods<const NamedMethod extends string>(
-    name: DeriveConsistentCollectionAndMethodName<NamedMethod, Collection>,
-  ): Omit<
-    Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, NamedMethod>,
-    Built[number] | "namedMethods"
-  > {
+  namedMethods<const Name extends string>(
+    name: NonEmptyString<Name>,
+  ): NamedMethodsReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
     this.useNamedMethods = true;
-    this.methodName = name;
-
-    return this as unknown as Omit<
-      Builder<Type, AccumulatedFeature, [...Built, "namedMethods"], Collection, NamedMethod>,
-      Built[number] | "namedMethods"
-    >;
+    this.namedMethodsName = name;
+    return this as never;
   }
 
-  build() {
+  stateless(): StatelessReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useStateType = "stateless";
+    this.useMethodBehaviour = "raw";
+    return this as never;
+  }
+
+  state(): StateReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useStateType = "state";
+    return this as never;
+  }
+
+  namedState<const Name extends string>(
+    name: NameConvention<Name>,
+  ): NamedStateReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
+    this.useStateType = "namedState";
+    this.namedStateName = name;
+    return this as never;
+  }
+
+  entities(): EntitiesReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useStateType = "entities";
+    return this as never;
+  }
+
+  namedEntities<const Name extends string>(
+    name: NameConvention<Name>,
+  ): NamedEntitiesReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
+    this.useStateType = "namedEntities";
+    this.namedEntitiesName = name;
+    return this as never;
+  }
+
+  rawMethods(): RawMethodsReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useMethodBehaviour = "raw";
+    return this as never;
+  }
+
+  patchState(): PatchStateReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useMethodBehaviour = "patch";
+    return this as never;
+  }
+
+  devToolsAware<const Action extends string>(
+    name: `[${Capitalize<Action>}]`,
+  ): DevToolsAwareReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useDevToolsAware = true;
+    this.devToolsActionPrefix = name;
+    return this as never;
+  }
+
+  requestStatus(): RequestStatusReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
+    this.useRequestStatus = true;
+    return this as never;
+  }
+
+  namedRequestStatus<const Name extends string>(
+    name: NameConvention<Name>,
+  ): NamedRequestStatusReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
+    this.useNamedRequestStatus = true;
+    this.namedRequestStatusName = name;
+    return this as never;
+  }
+
+  private getCrudMethodName(methodName: CrudMethods): string {
+    const accessModifierKey = this.useAccessModifier === "public" ? methodName : `_${methodName}`;
+    return this.useNamedMethods
+      ? accessModifierKey +
+          this.namedMethodsName?.charAt(0).toUpperCase() +
+          this.namedMethodsName?.slice(1)
+      : accessModifierKey;
+  }
+
+  get(): CrudMethodReturnType<
+    "get",
+    FluentCrudBuilderMethodKeyName<"get", Built, Collection>,
+    CrudMethodSignature<GetObservable<Type>, GetRxMethod, Built>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    Collection
+  > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      [this.getCrudMethodName("get")]: this.getMethodFactory(),
+    };
+    return this as never;
+  }
+
+  getAll(): CrudMethodReturnType<
+    "getAll",
+    FluentCrudBuilderMethodKeyName<"getAll", Built, Collection>,
+    CrudMethodSignature<GetAllObservable<Type>, GetAllRxMethod, Built>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    Collection
+  > {
+    return this as never;
+  }
+
+  pagedSearch(): CrudMethodReturnType<
+    "pagedSearch",
+    FluentCrudBuilderMethodKeyName<"pagedSearch", Built, Collection>,
+    CrudMethodSignature<PagedSearchObservable<Type>, PagedSearchRxMethod, Built>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    Collection
+  > {
+    return this as never;
+  }
+
+  create<CreateType = Omit<Type, "id">>(): CrudMethodReturnType<
+    "create",
+    FluentCrudBuilderMethodKeyName<"create", Built, Collection>,
+    CrudMethodSignature<CreateObservable<Type, CreateType>, CreateRxMethod<CreateType>, Built>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    Collection
+  > {
+    const implementation = (data: CreateType) => new Observable<Type>();
+
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      [this.getCrudMethodName("create")]: implementation,
+    };
+    return this as never;
+  }
+
+  update<UpdateType = Partial<Type>>(): CrudMethodReturnType<
+    "update",
+    FluentCrudBuilderMethodKeyName<"update", Built, Collection>,
+    CrudMethodSignature<UpdateObservable<Type, UpdateType>, UpdateRxMethod<UpdateType>, Built>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    Collection
+  > {
+    const implementation = (id: string, data: UpdateType) => new Observable<Type>(pipe());
+
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      [this.getCrudMethodName("update")]: implementation,
+    };
+    return this as never;
+  }
+
+  delete(): CrudMethodReturnType<
+    "delete",
+    FluentCrudBuilderMethodKeyName<"delete", Built, Collection>,
+    CrudMethodSignature<DeleteObservable, DeleteRxMethod, Built>,
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    Collection
+  > {
+    return this as never;
+  }
+
+  build(): SignalStoreFeature<EmptyFeatureResult, AccumulatedFeature> {
     return signalStoreFeature(
-      this.useEntities
-        ? withEntities<Type>()
-        : this.useNamedEntities
-          ? withEntities({ entity: type<Type>(), collection: this.collection })
-          : {},
-      withMethods((_, httpClient = inject(HttpClient)) => {
+      this.useStateType === "state"
+        ? withState<CrudStateSlice<Type>>({ data: null })
+        : this.useStateType === "namedState"
+          ? withState<NamedCrudStateSlice<Type, Collection>>({
+              [this.getNamedStateKey()]: null,
+            } as NamedCrudStateSlice<Type, Collection>)
+          : this.useStateType === "entities"
+            ? withEntities<Type>()
+            : this.useStateType === "namedEntities"
+              ? withEntities({
+                  entity: type<Type>(),
+                  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                  collection: this.namedEntitiesName!,
+                })
+              : {},
+      this.useRequestStatus
+        ? withCallState()
+        : this.useNamedRequestStatus
+          ? withCallState({ collection: this.namedRequestStatusName! })
+          : withState({}),
+      withMethods((store, httpClient = inject(HttpClient)) => {
         // Strip leading and trailing forward slashes.
         const apiUrl = this.apiUrlFactory().replace(/^\/+|\/+$/g, "");
 
         return {
           ...Object.entries(this.accumulatedCrudFeatureMethods).reduce(
             (acc, [key, value]) => {
-              const resolvedKey = this.useNamedMethods
-                ? key + this.methodName.charAt(0).toUpperCase() + this.methodName.slice(1)
-                : key;
               acc = {
                 ...acc,
-                [resolvedKey]: value(httpClient, apiUrl, this.httpOptions),
+                [key]:
+                  this.useMethodBehaviour === "patch"
+                    ? value(httpClient, apiUrl, this.httpOptions, store)
+                    : value(httpClient, apiUrl, this.httpOptions),
               };
               return acc;
             },
-            {} as NamedMethodsName extends ""
-              ? AccumulatedFeature["methods"]
-              : CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>,
+            {} as AccumulatedFeature["methods"],
           ),
         };
       }),
-    ) as SignalStoreFeature<
-      EmptyFeatureResult,
-      Omit<AccumulatedFeature, "methods"> & {
-        methods: NamedMethodsName extends ""
-          ? AccumulatedFeature["methods"]
-          : CollectionCrudMethods<NamedMethodsName, AccumulatedFeature["methods"]>;
-      }
-    >;
+    ) as SignalStoreFeature<EmptyFeatureResult, AccumulatedFeature>;
   }
 }
 
-export function withCrudMethods<Type = never>(
+export function withFluentCrud<Type = never>(
   apiUrlFactory: () => string,
   httpOptions?: Partial<HttpOptions>,
-): Builder<Type> {
-  return Builder.of<Type>(apiUrlFactory, httpOptions);
+): Of<Type> {
+  return FluentCrudBuilder.of<Type>(apiUrlFactory, httpOptions);
 }
 
 interface User {
-  id: string;
+  ids: string;
 }
 
-export const ProtoProgressStore = signalStore(
-  { providedIn: "root" },
-  withCrudMethods<User>(() => "")
-    .get()
-    .namedMethods("user")
-    .namedEntities("user")
-    .getAll()
-    .pagedSearch()
-    .create()
-    .delete()
+export const ProtoStore = signalStore(
+  FluentCrudBuilder.of<User>(() => "")
+    .public()
+    .namedState("user")
+    .patchState()
+    .namedRequestStatus("user")
     .update()
     .build(),
-  withDevtools("Users"),
-  withMethods((store) => ({
-    add: rxMethod<void>(pipe(tap(() => {}))),
-  })),
 );
+
+class Testing {
+  store: InstanceType<typeof ProtoStore> = inject(ProtoStore);
+
+  constructor() {
+    this.store.userData();
+  }
+}

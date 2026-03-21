@@ -4,7 +4,7 @@ import { patchState, signalStore, withMethods, withState } from "@ngrx/signals";
 import { withCrudMethods } from "./with-crud-methods/feature";
 import { rxMethod } from "@ngrx/signals/rxjs-interop";
 import { pipe, switchMap, tap } from "rxjs";
-import { ProtoProgressStore } from "./with-crud-methods/proto";
+import { ProtoStore } from "./with-crud-methods/proto";
 
 interface User {
   id: string;
@@ -39,21 +39,15 @@ const Store = signalStore(
 @Component({
   selector: "app-root",
   imports: [RouterOutlet],
-  providers: [Store],
+  providers: [ProtoStore],
   templateUrl: "./app.html",
   styleUrl: "./app.css",
 })
 export class App {
   protected readonly title = signal("ngrx-signal-store-crud-feature-builder");
-  store = inject(Store);
-  proto = inject(ProtoProgressStore);
+  store: InstanceType<typeof ProtoStore> = inject(ProtoStore);
 
   constructor() {
-    console.log(this.proto.userEntities());
-    console.log(this.proto.userIds());
-    console.log(this.proto.userEntityMap());
-    this.proto.add();
-    this.proto.add();
-    this.proto.add();
+    this.store.userCallState();
   }
 }
