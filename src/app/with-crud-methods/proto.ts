@@ -6,10 +6,10 @@ import {
   setError,
   setLoading,
   updateState,
-  withCallState,
-} from "@angular-architects/ngrx-toolkit";
-import { HttpClient, HttpHeaders } from "@angular/common/http";
-import { inject } from "@angular/core";
+  withCallState
+} from '@angular-architects/ngrx-toolkit';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { inject } from '@angular/core';
 import {
   type EmptyFeatureResult,
   patchState,
@@ -20,8 +20,8 @@ import {
   type,
   withMethods,
   withState,
-  type WritableStateSource,
-} from "@ngrx/signals";
+  type WritableStateSource
+} from '@ngrx/signals';
 import {
   addEntity,
   type EntityId,
@@ -29,12 +29,12 @@ import {
   type EntityState,
   type NamedEntityProps,
   type NamedEntityState,
-  withEntities,
-} from "@ngrx/signals/entities";
-import { type RxMethod, rxMethod } from "@ngrx/signals/rxjs-interop";
-import { catchError, EMPTY, first, Observable, pipe, switchMap, tap } from "rxjs";
-import { type Includes, type IsLowercase, type NonEmptyString } from "type-fest";
-import { type HttpClientParams, type HttpOptions, type PagedResponse } from "./models";
+  withEntities
+} from '@ngrx/signals/entities';
+import { type RxMethod, rxMethod } from '@ngrx/signals/rxjs-interop';
+import { catchError, EMPTY, first, Observable, pipe, switchMap, tap } from 'rxjs';
+import { type Includes, type IsLowercase, type NonEmptyString } from 'type-fest';
+import { type HttpClientParams, type HttpOptions, type PagedResponse } from './models';
 
 function noop() {}
 
@@ -104,9 +104,7 @@ export type Build = "build";
 
 export type FluentBuilderMethods = CustomisationMethods | CrudMethods | Build;
 
-export type PrivateMembers = "apiUrlFactory" | "httpOptions" | "accumulatedCrudFeatureMethods";
-
-export type InitialExcluded = Exclude<FluentBuilderMethods, "private" | "public">; // | PrivateMembers;
+export type InitialExcluded = Exclude<FluentBuilderMethods, "private" | "public">;
 
 export type Of<Type> = Omit<FluentCrudBuilder<Type>, InitialExcluded>;
 
@@ -114,7 +112,7 @@ export type PublicReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -137,7 +135,7 @@ export type PrivateReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -160,7 +158,7 @@ export type NamedMethodsReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -187,7 +185,7 @@ export type StateReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -224,7 +222,7 @@ export type NamedStateReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -255,7 +253,7 @@ export type StatelessReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -288,7 +286,7 @@ export type EntitiesReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Type extends Entity
   ? Omit<
@@ -328,7 +326,7 @@ export type NamedEntitiesReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Type extends Entity
   ? Omit<
@@ -368,7 +366,7 @@ export type RawMethodsReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -385,7 +383,7 @@ export type PatchStateReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -411,7 +409,7 @@ export type DevToolsAwareReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -434,7 +432,7 @@ export type RequestStatusReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -457,7 +455,7 @@ export type NamedRequestStatusReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -486,7 +484,7 @@ export type CrudMethodReturnType<
   Type,
   AccumulatedFeature extends SignalStoreFeatureResult,
   Built extends FluentBuilderMethods[],
-  Excluded extends FluentBuilderMethods | PrivateMembers,
+  Excluded extends FluentBuilderMethods,
   Collection extends string,
 > = Omit<
   FluentCrudBuilder<
@@ -550,7 +548,7 @@ class FluentCrudBuilder<
     methods: {};
   },
   Built extends FluentBuilderMethods[] = [],
-  Excluded extends FluentBuilderMethods | PrivateMembers = InitialExcluded,
+  Excluded extends FluentBuilderMethods = InitialExcluded,
   Collection extends string = "",
 > {
   private useStateType: "stateless" | "state" | "namedState" | "entities" | "namedEntities" | null =
