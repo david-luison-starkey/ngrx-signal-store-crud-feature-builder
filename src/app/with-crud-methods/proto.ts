@@ -38,8 +38,11 @@ import { type HttpClientParams, type HttpOptions, type PagedResponse } from './m
 
 function noop() {}
 
-export type NameConvention<Name extends string> =
-  IsLowercase<Name> extends true ? NonEmptyString<Name> : never;
+export type NameConvention<Name extends string, Collection extends string> = Collection extends ""
+  ? IsLowercase<Name> extends true
+    ? NonEmptyString<Name>
+    : never
+  : Collection;
 
 export type IncludesAny<StringArray extends string[], StringUnion extends string> = [
   StringUnion & StringArray[number],
@@ -461,7 +464,7 @@ export type NamedRequestStatusReturnType<
   FluentCrudBuilder<
     Type,
     AccumulatedFeature & {
-      state: NamedCallStateSlice<Collection>;
+      state: AccumulatedFeature["state"] & NamedCallStateSlice<Collection>;
       props: NamedCallStateSignals<Collection>;
     },
     [...Built, "namedRequestStatus"],
@@ -751,8 +754,14 @@ class FluentCrudBuilder<
   }
 
   namedMethods<const Name extends string>(
-    name: NonEmptyString<Name>,
-  ): NamedMethodsReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
+    name: NameConvention<Name, Collection>,
+  ): NamedMethodsReturnType<
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    NameConvention<Name, Collection>
+  > {
     this.useNamedMethods = true;
     this.namedMethodsName = name;
     return this as never;
@@ -770,8 +779,14 @@ class FluentCrudBuilder<
   }
 
   namedState<const Name extends string>(
-    name: NameConvention<Name>,
-  ): NamedStateReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
+    name: NameConvention<Name, Collection>,
+  ): NamedStateReturnType<
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    NameConvention<Name, Collection>
+  > {
     this.useStateType = "namedState";
     this.namedStateName = name;
     return this as never;
@@ -783,8 +798,14 @@ class FluentCrudBuilder<
   }
 
   namedEntities<const Name extends string>(
-    name: NameConvention<Name>,
-  ): NamedEntitiesReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
+    name: NameConvention<Name, Collection>,
+  ): NamedEntitiesReturnType<
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    NameConvention<Name, Collection>
+  > {
     this.useStateType = "namedEntities";
     this.namedEntitiesName = name;
     return this as never;
@@ -814,8 +835,14 @@ class FluentCrudBuilder<
   }
 
   namedRequestStatus<const Name extends string>(
-    name: NameConvention<Name>,
-  ): NamedRequestStatusReturnType<Type, AccumulatedFeature, Built, Excluded, Name> {
+    name: NameConvention<Name, Collection>,
+  ): NamedRequestStatusReturnType<
+    Type,
+    AccumulatedFeature,
+    Built,
+    Excluded,
+    NameConvention<Name, Collection>
+  > {
     this.useNamedRequestStatus = true;
     this.namedRequestStatusName = name;
     return this as never;
@@ -984,6 +1011,7 @@ interface User {
 export const ProtoStore = signalStore(
   FluentCrudBuilder.of<User>(() => "")
     .public()
+    .namedMethods("user")
     .namedState("user")
     .patchState()
     .namedRequestStatus("user")
@@ -992,9 +1020,7 @@ export const ProtoStore = signalStore(
 );
 
 class Testing {
-  store: InstanceType<typeof ProtoStore> = inject(ProtoStore);
+  store = inject(ProtoStore);
 
-  constructor() {
-    this.store.userData();
-  }
+  constructor() {}
 }
