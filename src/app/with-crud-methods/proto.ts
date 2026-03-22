@@ -822,7 +822,7 @@ class FluentCrudBuilder<
   }
 
   devToolsAware<const Action extends string>(
-    name: `[${Capitalize<Action>}]`,
+    name: `[${Capitalize<NameConvention<Action, Collection>>}]`,
   ): DevToolsAwareReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
     this.useDevToolsAware = true;
     this.devToolsActionPrefix = name;
@@ -1014,6 +1014,7 @@ export const ProtoStore = signalStore(
     .namedMethods("user")
     .namedState("user")
     .patchState()
+    .devToolsAware("[User]")
     .namedRequestStatus("user")
     .update()
     .build(),
