@@ -481,6 +481,11 @@ export type NamedRequestStatusReturnType<
   >
 >;
 
+export type ResolvedCrudMethod<
+  MethodName extends string,
+  CrudMethod extends CrudMethods,
+> = CrudMethod extends "getAll" ? `${MethodName}s` : MethodName;
+
 export type CrudMethodReturnType<
   CrudMethod extends CrudMethods,
   MethodName extends string,
@@ -494,7 +499,7 @@ export type CrudMethodReturnType<
   FluentCrudBuilder<
     Type,
     AccumulatedFeature & {
-      methods: Record<MethodName, MethodSignature>;
+      methods: Record<ResolvedCrudMethod<MethodName, CrudMethod>, MethodSignature>;
     },
     [...Built, CrudMethod],
     Exclude<Excluded | CrudMethod | CustomisationMethods, Build>,
@@ -868,10 +873,14 @@ class FluentCrudBuilder<
 
   private getCrudMethodName(methodName: CrudMethods): string {
     const accessModifierKey = this.useAccessModifier === "public" ? methodName : `_${methodName}`;
+    const isPlural = methodName === "getAll";
     return this.useNamedMethods
       ? accessModifierKey +
-          this.namedMethodsName?.charAt(0).toUpperCase() +
-          this.namedMethodsName?.slice(1)
+        this.namedMethodsName?.charAt(0).toUpperCase() +
+        this.namedMethodsName?.slice(1) +
+        isPlural
+        ? "s"
+        : ""
       : accessModifierKey;
   }
 
@@ -1033,18 +1042,19 @@ export function withFluentCrud<Type = never>(
 }
 
 interface User {
-  ids: string;
+  id: string;
 }
 
 export const ProtoStore = signalStore(
   FluentCrudBuilder.of<User>(() => "")
     .public()
     .namedMethods("user")
-    .namedState("user")
+    .namedEntities("user")
     .patchState()
     .devToolsAware("[User]")
     .namedRequestStatus("user")
     .update()
+    .getAll()
     .build(),
 );
 
