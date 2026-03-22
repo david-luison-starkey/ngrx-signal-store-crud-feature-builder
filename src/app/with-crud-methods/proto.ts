@@ -4,6 +4,7 @@ import {
   type NamedCallStateSignals,
   type NamedCallStateSlice,
   setError,
+  setLoaded,
   setLoading,
   updateState,
   withCallState
@@ -35,10 +36,10 @@ import {
   withEntities
 } from "@ngrx/signals/entities";
 import { type RxMethod, rxMethod } from "@ngrx/signals/rxjs-interop";
-import { catchError, EMPTY, map, Observable, pipe, switchMap, tap } from "rxjs";
+import { catchError, EMPTY, map, type Observable, pipe, switchMap, tap } from "rxjs";
 import { type Includes, type IsLowercase, type NonEmptyString } from "type-fest";
-import { type HttpClientParams, type HttpOptions, type PagedResponse } from "./models";
 import { _create, _delete, _get, _getAll, _pagedSearch, _update } from "./crud-functions";
+import { type HttpClientParams, type HttpOptions, type PagedResponse } from "./models";
 
 function noop() {}
 
@@ -625,7 +626,9 @@ class FluentCrudBuilder<
       this.useStateType === "entities"
         ? addEntity(data as Type & Entity)
         : this.useStateType === "namedEntities"
-          ? addEntity(data as Type & Entity, { collection: this.namedEntitiesName! })
+          ? addEntity(data as Type & Entity, {
+              collection: this.namedEntitiesName!,
+            })
           : this.useStateType === "state"
             ? () => ({ data })
             : () => ({ [this.getNamedStateKey()]: data });
@@ -634,7 +637,9 @@ class FluentCrudBuilder<
       this.useStateType === "entities"
         ? addEntities(data as (Type & Entity)[])
         : this.useStateType === "namedEntities"
-          ? addEntities(data as (Type & Entity)[], { collection: this.namedEntitiesName! })
+          ? addEntities(data as (Type & Entity)[], {
+              collection: this.namedEntitiesName!,
+            })
           : noop();
 
     const buildReducer = <Type>(data: any, id?: string) => {
@@ -653,10 +658,14 @@ class FluentCrudBuilder<
           return this.useStateType === "entities"
             ? upsertEntity(data as Type & Entity)
             : this.useStateType === "namedEntities"
-              ? upsertEntity(data as Type & Entity, { collection: this.namedEntitiesName! })
+              ? upsertEntity(data as Type & Entity, {
+                  collection: this.namedEntitiesName!,
+                })
               : this.useStateType === "state"
                 ? (state: any) => ({ data: { ...state.data, ...data } })
-                : (state: any) => ({ [this.getNamedStateKey()]: { ...state.data, ...data } });
+                : (state: any) => ({
+                    [this.getNamedStateKey()]: { ...state.data, ...data },
+                  });
         case "delete":
           return this.useStateType === "entities"
             ? removeEntity(id!)
@@ -697,19 +706,19 @@ class FluentCrudBuilder<
               if (this.useDevToolsAware) {
                 updateState(
                   store,
-                  `${this.devToolsActionPrefix!} ${methodType} completed`,
+                  `${this.devToolsActionPrefix!} ${methodType} call completed`,
                   reducer,
                 );
                 updateState(
                   store,
                   `${this.devToolsActionPrefix!} loaded`,
-                  this.useRequestStatus ? setLoading : setLoading(this.namedRequestStatusName!),
+                  this.useRequestStatus ? setLoaded() : setLoaded(this.namedRequestStatusName!),
                 );
               } else {
                 patchState(store, reducer);
                 patchState(
                   store,
-                  this.useRequestStatus ? setLoading : setLoading(this.namedRequestStatusName!),
+                  this.useRequestStatus ? setLoaded() : setLoaded(this.namedRequestStatusName!),
                 );
               }
             }),
@@ -868,7 +877,7 @@ class FluentCrudBuilder<
   }
 
   devToolsAware<const Action extends string>(
-    name: `[${Capitalize<NameConvention<Action, Collection>>}]`,
+    name: `[${Capitalize<Action>}]`,
   ): DevToolsAwareReturnType<Type, AccumulatedFeature, Built, Excluded, Collection> {
     this.useDevToolsAware = true;
     this.devToolsActionPrefix = name;
@@ -894,16 +903,14 @@ class FluentCrudBuilder<
     return this as never;
   }
 
-  private getCrudMethodName(methodName: CrudMethods): string {
+  private getCrudMethodKey(methodName: CrudMethods): string {
     const accessModifierKey = this.useAccessModifier === "public" ? methodName : `_${methodName}`;
     const isPlural = methodName === "getAll";
     return this.useNamedMethods
       ? accessModifierKey +
-        this.namedMethodsName?.charAt(0).toUpperCase() +
-        this.namedMethodsName?.slice(1) +
-        isPlural
-        ? "s"
-        : ""
+          this.namedMethodsName?.charAt(0).toUpperCase() +
+          this.namedMethodsName?.slice(1) +
+          (isPlural ? "s" : "")
       : accessModifierKey;
   }
 
@@ -919,7 +926,7 @@ class FluentCrudBuilder<
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("get")]: this.crudMethodFactory("get"),
+      [this.getCrudMethodKey("get")]: this.crudMethodFactory("get"),
     };
     return this as never;
   }
@@ -936,7 +943,7 @@ class FluentCrudBuilder<
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("getAll")]: this.crudMethodFactory("getAll"),
+      [this.getCrudMethodKey("getAll")]: this.crudMethodFactory("getAll"),
     };
 
     return this as never;
@@ -954,7 +961,7 @@ class FluentCrudBuilder<
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("pagedSearch")]: this.crudMethodFactory("pagedSearch"),
+      [this.getCrudMethodKey("pagedSearch")]: this.crudMethodFactory("pagedSearch"),
     };
 
     return this as never;
@@ -972,7 +979,7 @@ class FluentCrudBuilder<
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("create")]: this.crudMethodFactory("create"),
+      [this.getCrudMethodKey("create")]: this.crudMethodFactory("create"),
     };
     return this as never;
   }
@@ -989,7 +996,7 @@ class FluentCrudBuilder<
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("update")]: this.crudMethodFactory("update"),
+      [this.getCrudMethodKey("update")]: this.crudMethodFactory("update"),
     };
     return this as never;
   }
@@ -1006,7 +1013,7 @@ class FluentCrudBuilder<
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("delete")]: this.crudMethodFactory("delete"),
+      [this.getCrudMethodKey("delete")]: this.crudMethodFactory("delete"),
     };
     return this as never;
   }
@@ -1057,7 +1064,7 @@ class FluentCrudBuilder<
   }
 }
 
-export function withFluentCrud<Type = never>(
+export function withCrudFeatureBuilder<Type = never>(
   apiUrlFactory: () => string,
   httpOptions?: Partial<HttpOptions>,
 ): Of<Type> {
