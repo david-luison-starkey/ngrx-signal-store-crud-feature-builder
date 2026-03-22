@@ -7,9 +7,9 @@ import {
   setLoading,
   updateState,
   withCallState
-} from '@angular-architects/ngrx-toolkit';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { inject } from '@angular/core';
+} from "@angular-architects/ngrx-toolkit";
+import { HttpClient, HttpHeaders } from "@angular/common/http";
+import { inject } from "@angular/core";
 import {
   type EmptyFeatureResult,
   patchState,
@@ -21,21 +21,24 @@ import {
   withMethods,
   withState,
   type WritableStateSource
-} from '@ngrx/signals';
+} from "@ngrx/signals";
 import {
+  addEntities,
   addEntity,
   type EntityId,
   type EntityProps,
   type EntityState,
   type NamedEntityProps,
   type NamedEntityState,
+  removeEntity,
+  upsertEntity,
   withEntities
-} from '@ngrx/signals/entities';
-import { type RxMethod, rxMethod } from '@ngrx/signals/rxjs-interop';
-import { catchError, EMPTY, first, Observable, pipe, switchMap, tap } from 'rxjs';
-import { type Includes, type IsLowercase, type NonEmptyString } from 'type-fest';
-import { type HttpClientParams, type HttpOptions, type PagedResponse } from './models';
-import { _create, _delete, _get, _getAll, _pagedSearch, _update } from './crud-functions';
+} from "@ngrx/signals/entities";
+import { type RxMethod, rxMethod } from "@ngrx/signals/rxjs-interop";
+import { catchError, EMPTY, map, Observable, pipe, switchMap, tap } from "rxjs";
+import { type Includes, type IsLowercase, type NonEmptyString } from "type-fest";
+import { type HttpClientParams, type HttpOptions, type PagedResponse } from "./models";
+import { _create, _delete, _get, _getAll, _pagedSearch, _update } from "./crud-functions";
 
 function noop() {}
 
@@ -595,6 +598,75 @@ class FluentCrudBuilder<
           return _delete;
       }
     }
+    const buildCrudMethod = <Type extends Entity>(
+      httpClient: HttpClient,
+      apiUrl: string,
+      httpOptions: HttpOptions,
+      payload: any,
+    ): Observable<any> => {
+      switch (methodType) {
+        case "get":
+          return _get(httpClient, apiUrl, httpOptions)<Type>(payload);
+        case "getAll":
+          return _getAll(httpClient, apiUrl, httpOptions)<Type>();
+        case "pagedSearch":
+          return _pagedSearch(httpClient, apiUrl, httpOptions)<Type>(payload);
+        case "create":
+          return _create(httpClient, apiUrl, httpOptions)<Type>(payload);
+        case "update":
+          return _update(httpClient, apiUrl, httpOptions)<Type>(payload.id, payload.data);
+        case "delete":
+          // Return initial payload as delete returns Observable<void>
+          return _delete(httpClient, apiUrl, httpOptions)(payload).pipe(map(() => payload));
+      }
+    };
+
+    const addEntityReducer = (data: any) =>
+      this.useStateType === "entities"
+        ? addEntity(data as Type & Entity)
+        : this.useStateType === "namedEntities"
+          ? addEntity(data as Type & Entity, { collection: this.namedEntitiesName! })
+          : this.useStateType === "state"
+            ? () => ({ data })
+            : () => ({ [this.getNamedStateKey()]: data });
+
+    const addEntitiesReducer = (data: any) =>
+      this.useStateType === "entities"
+        ? addEntities(data as (Type & Entity)[])
+        : this.useStateType === "namedEntities"
+          ? addEntities(data as (Type & Entity)[], { collection: this.namedEntitiesName! })
+          : noop();
+
+    const buildReducer = <Type>(data: any, id?: string) => {
+      switch (methodType) {
+        case "get":
+          return addEntityReducer(data);
+        case "getAll":
+          return addEntitiesReducer(data);
+        case "pagedSearch":
+          // TODO: pagedSearch should only be available to entities and namedEntities, needs
+          //  withState({...paginationProperties})
+          return noop() as any;
+        case "create":
+          return addEntityReducer(data);
+        case "update":
+          return this.useStateType === "entities"
+            ? upsertEntity(data as Type & Entity)
+            : this.useStateType === "namedEntities"
+              ? upsertEntity(data as Type & Entity, { collection: this.namedEntitiesName! })
+              : this.useStateType === "state"
+                ? (state: any) => ({ data: { ...state.data, ...data } })
+                : (state: any) => ({ [this.getNamedStateKey()]: { ...state.data, ...data } });
+        case "delete":
+          return this.useStateType === "entities"
+            ? removeEntity(id!)
+            : this.useStateType === "namedEntities"
+              ? removeEntity(id!, { collection: this.namedEntitiesName! })
+              : this.useStateType === "state"
+                ? () => ({ data: null })
+                : () => ({ [this.getNamedStateKey()]: null });
+      }
+    };
 
     if (this.useRequestStatus || this.useNamedRequestStatus) {
       return <Type extends Entity>(
@@ -603,97 +675,60 @@ class FluentCrudBuilder<
         httpOptions: HttpOptions,
         store: WritableStateSource<any>,
       ) =>
-        rxMethod<string>(
+        rxMethod<any>(
           pipe(
             tap(() =>
-              this.useRequestStatus || this.useNamedRequestStatus
-                ? this.useDevToolsAware
-                  ? updateState(
-                      store,
-                      `${this.devToolsActionPrefix!} loading`,
-                      this.useRequestStatus
-                        ? setLoading()
-                        : setLoading(this.namedRequestStatusName!),
-                    )
-                  : patchState(
-                      store,
-                      this.useRequestStatus
-                        ? setLoading()
-                        : setLoading(this.namedRequestStatusName!),
-                    )
-                : noop(),
+              this.useDevToolsAware
+                ? updateState(
+                    store,
+                    `${this.devToolsActionPrefix!} loading`,
+                    this.useRequestStatus ? setLoading() : setLoading(this.namedRequestStatusName!),
+                  )
+                : patchState(
+                    store,
+                    this.useRequestStatus ? setLoading() : setLoading(this.namedRequestStatusName!),
+                  ),
             ),
-            switchMap((id: string) => {
-              switch (methodType) {
-                case "get":
-                  return _get(httpClient, apiUrl, httpOptions)<Type>(id);
-                default:
-                  return httpClient.get<Type>(`${apiUrl}/${id}`, httpOptions).pipe(first());
-              }
-            }),
-            tap((data: Type) => {
+            switchMap((payload: any) =>
+              buildCrudMethod<Type>(httpClient, apiUrl, httpOptions, payload).pipe(),
+            ),
+            tap((data: any) => {
+              const reducer = buildReducer<Type>(data);
               if (this.useDevToolsAware) {
                 updateState(
                   store,
+                  `${this.devToolsActionPrefix!} ${methodType} completed`,
+                  reducer,
+                );
+                updateState(
+                  store,
                   `${this.devToolsActionPrefix!} loaded`,
-                  this.useStateType === "entities"
-                    ? addEntity(data)
-                    : this.useStateType === "namedEntities"
-                      ? addEntity(data, { collection: this.namedEntitiesName! })
-                      : this.useStateType === "state"
-                        ? () => ({ data })
-                        : () => ({ [this.getNamedStateKey()]: data }),
+                  this.useRequestStatus ? setLoading : setLoading(this.namedRequestStatusName!),
+                );
+              } else {
+                patchState(store, reducer);
+                patchState(
+                  store,
+                  this.useRequestStatus ? setLoading : setLoading(this.namedRequestStatusName!),
+                );
+              }
+            }),
+            catchError((error: unknown) => {
+              if (this.useDevToolsAware) {
+                updateState(
+                  store,
+                  `${this.devToolsActionPrefix!} error`,
+                  this.useRequestStatus
+                    ? setError(error)
+                    : setError(error, this.namedRequestStatusName!),
                 );
               } else {
                 patchState(
                   store,
-                  this.useStateType === "entities"
-                    ? addEntity(data)
-                    : this.useStateType === "namedEntities"
-                      ? addEntity(data, { collection: this.namedEntitiesName! })
-                      : this.useStateType === "state"
-                        ? () => ({ data })
-                        : () => ({ [this.getNamedStateKey()]: data }),
+                  this.useRequestStatus
+                    ? setError(error)
+                    : setError(error, this.namedRequestStatusName!),
                 );
-
-                if (this.useRequestStatus || this.useNamedRequestStatus) {
-                  if (this.useDevToolsAware) {
-                    updateState(
-                      store,
-                      `${this.devToolsActionPrefix!} loaded`,
-                      this.useRequestStatus
-                        ? setLoading()
-                        : setLoading(this.namedRequestStatusName!),
-                    );
-                  } else {
-                    patchState(
-                      store,
-                      this.useRequestStatus
-                        ? setLoading()
-                        : setLoading(this.namedRequestStatusName!),
-                    );
-                  }
-                }
-              }
-            }),
-            catchError((error: unknown) => {
-              if (this.useRequestStatus || this.namedRequestStatusName) {
-                if (this.useDevToolsAware) {
-                  updateState(
-                    store,
-                    `${this.devToolsActionPrefix!} error`,
-                    this.useRequestStatus
-                      ? setError(error)
-                      : setError(error, this.namedRequestStatusName!),
-                  );
-                } else {
-                  patchState(
-                    store,
-                    this.useRequestStatus
-                      ? setError(error)
-                      : setError(error, this.namedRequestStatusName!),
-                  );
-                }
               }
               return EMPTY;
             }),
@@ -708,30 +743,18 @@ class FluentCrudBuilder<
       ) =>
         rxMethod<string>(
           pipe(
-            switchMap((id: string) =>
-              httpClient.get<Type & Entity>(`${apiUrl}/${id}`, httpOptions).pipe(first()),
-            ),
-            tap((data: Type & Entity) => {
+            switchMap((payload) => buildCrudMethod(httpClient, apiUrl, httpOptions, payload)),
+            tap((data: any) => {
+              const reducer = buildReducer<Type>(data);
               if (this.useDevToolsAware) {
-                updateState(
-                  store,
-                  this.devToolsActionPrefix!,
-                  this.useStateType === "entities"
-                    ? addEntity(data)
-                    : addEntity(data, { collection: this.namedEntitiesName! }),
-                );
+                updateState(store, `${this.devToolsActionPrefix!} loading`, reducer);
               } else {
-                patchState(
-                  store,
-                  this.useStateType === "entities"
-                    ? addEntity(data)
-                    : addEntity(data, { collection: this.namedEntitiesName! }),
-                );
+                patchState(store, reducer);
               }
             }),
             catchError((error: unknown) => {
               if (this.useDevToolsAware) {
-                updateState(store, this.devToolsActionPrefix!, setError(error));
+                updateState(store, `${this.devToolsActionPrefix!} error`, setError(error));
               } else {
                 patchState(store, setError(error));
               }
