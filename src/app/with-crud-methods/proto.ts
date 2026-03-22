@@ -35,6 +35,7 @@ import { type RxMethod, rxMethod } from '@ngrx/signals/rxjs-interop';
 import { catchError, EMPTY, first, Observable, pipe, switchMap, tap } from 'rxjs';
 import { type Includes, type IsLowercase, type NonEmptyString } from 'type-fest';
 import { type HttpClientParams, type HttpOptions, type PagedResponse } from './models';
+import { _create, _delete, _get, _getAll, _pagedSearch, _update } from './crud-functions';
 
 function noop() {}
 
@@ -572,10 +573,22 @@ class FluentCrudBuilder<
     return `${this.namedStateName}Data`;
   }
 
-  private getMethodFactory() {
+  private crudMethodFactory(methodType: CrudMethods) {
     if (this.useMethodBehaviour === "raw") {
-      return (httpClient: HttpClient, apiUrl: string, httpOptions: HttpOptions) => (id: string) =>
-        httpClient.get<Type>(`${apiUrl}/${id}`, httpOptions).pipe(first());
+      switch (methodType) {
+        case "get":
+          return _get;
+        case "getAll":
+          return _getAll;
+        case "pagedSearch":
+          return _pagedSearch;
+        case "create":
+          return _create;
+        case "update":
+          return _update;
+        case "delete":
+          return _delete;
+      }
     }
 
     if (this.useRequestStatus || this.useNamedRequestStatus) {
@@ -605,9 +618,14 @@ class FluentCrudBuilder<
                     )
                 : noop(),
             ),
-            switchMap((id: string) =>
-              httpClient.get<Type>(`${apiUrl}/${id}`, httpOptions).pipe(first()),
-            ),
+            switchMap((id: string) => {
+              switch (methodType) {
+                case "get":
+                  return _get(httpClient, apiUrl, httpOptions)<Type>(id);
+                default:
+                  return httpClient.get<Type>(`${apiUrl}/${id}`, httpOptions).pipe(first());
+              }
+            }),
             tap((data: Type) => {
               if (this.useDevToolsAware) {
                 updateState(
@@ -686,9 +704,9 @@ class FluentCrudBuilder<
         rxMethod<string>(
           pipe(
             switchMap((id: string) =>
-              httpClient.get<Type & { id: string }>(`${apiUrl}/${id}`, httpOptions).pipe(first()),
+              httpClient.get<Type & Entity>(`${apiUrl}/${id}`, httpOptions).pipe(first()),
             ),
-            tap((data: Type & { id: string }) => {
+            tap((data: Type & Entity) => {
               if (this.useDevToolsAware) {
                 updateState(
                   store,
@@ -869,7 +887,7 @@ class FluentCrudBuilder<
   > {
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("get")]: this.getMethodFactory(),
+      [this.getCrudMethodName("get")]: this.crudMethodFactory("get"),
     };
     return this as never;
   }
@@ -884,6 +902,11 @@ class FluentCrudBuilder<
     Excluded,
     Collection
   > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      [this.getCrudMethodName("getAll")]: this.crudMethodFactory("getAll"),
+    };
+
     return this as never;
   }
 
@@ -897,6 +920,11 @@ class FluentCrudBuilder<
     Excluded,
     Collection
   > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      [this.getCrudMethodName("pagedSearch")]: this.crudMethodFactory("pagedSearch"),
+    };
+
     return this as never;
   }
 
@@ -910,11 +938,9 @@ class FluentCrudBuilder<
     Excluded,
     Collection
   > {
-    const implementation = (data: CreateType) => new Observable<Type>();
-
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("create")]: implementation,
+      [this.getCrudMethodName("create")]: this.crudMethodFactory("create"),
     };
     return this as never;
   }
@@ -929,11 +955,9 @@ class FluentCrudBuilder<
     Excluded,
     Collection
   > {
-    const implementation = (id: string, data: UpdateType) => new Observable<Type>(pipe());
-
     this.accumulatedCrudFeatureMethods = {
       ...this.accumulatedCrudFeatureMethods,
-      [this.getCrudMethodName("update")]: implementation,
+      [this.getCrudMethodName("update")]: this.crudMethodFactory("update"),
     };
     return this as never;
   }
@@ -948,6 +972,10 @@ class FluentCrudBuilder<
     Excluded,
     Collection
   > {
+    this.accumulatedCrudFeatureMethods = {
+      ...this.accumulatedCrudFeatureMethods,
+      [this.getCrudMethodName("delete")]: this.crudMethodFactory("delete"),
+    };
     return this as never;
   }
 
